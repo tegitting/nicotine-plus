@@ -115,6 +115,10 @@ class Plugin(BasePlugin):
     def user_stats_notification(self, user, stats):
         self.log("user_stats_notification(user=%s, stats=%s)", (user, stats))
 
+    # TegettinG added
+    def user_stats_notification_login(self, user, stats):
+        self.log("user_stats_notification_login(user=%s, stats=%s)", (user, stats))
+
     def user_status_notification(self, user, status, privileged):
         self.log("user_status_notification(user=%s, status=%s, privileged=%s)", (user, status, privileged))
 
