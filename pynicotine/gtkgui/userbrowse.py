@@ -475,10 +475,14 @@ class UserBrowse:
         # Generate the folder tree and select first folder
         self.create_folder_tree(browsed_user.public_folders)
 
+        private_folders = '0'
         if browsed_user.private_folders:
             self.create_folder_tree(browsed_user.private_folders, private=True)
+            private_folders = humanize(browsed_user.private_folders)
 
-        self.num_folders_label.set_text(humanize(browsed_user.num_folders))
+        human_folder_count = humanize(browsed_user.num_folders)
+        string = "Private: " + private_folders + " / Open: " + human_folder_count
+        self.num_folders_label.set_text(string)
         self.share_size_label.set_text(human_size(browsed_user.shared_size))
 
         if self.expand_button.get_active():
