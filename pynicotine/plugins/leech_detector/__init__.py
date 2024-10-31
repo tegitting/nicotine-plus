@@ -32,20 +32,20 @@ class Plugin(BasePlugin):
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
+            "message": "To avoid being banned please configure your shares - https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek",
             "open_private_chat": True,
             "num_files": 1,
             "num_folders": 1,
+            "percentage_locked": 1,
             "detected_leechers": []
         }
         self.metasettings = {
             "message": {
-                "description": ("Private chat message to send to leechers. Each line is sent as a separate message, "
-                                "too many message lines may get you temporarily banned for spam!"),
+                "description": ("Message to send to leechers. Each line is a separate message. Don't Spam!"),
                 "type": "textview"
             },
             "open_private_chat": {
-                "description": "Open chat tabs when sending private messages to leechers",
+                "description": "Open chat tab when sending messages to leechers",
                 "type": "bool"
             },
             "num_files": {
@@ -55,6 +55,10 @@ class Plugin(BasePlugin):
             "num_folders": {
                 "description": "Require users to have a minimum number of shared folders:",
                 "type": "int", "minimum": 1
+            },
+            "percentage_locked": {
+                "description": "The max percentage of locked/private folders allowed:",
+                "type": "int", "minimum": 1, "maximum": 100
             },
             "detected_leechers": {
                 "description": "Detected leechers",
@@ -76,11 +80,11 @@ class Plugin(BasePlugin):
             self.settings["num_folders"] = min_num_folders
 
         self.log(
-            "Require users have a minimum of %d files in %d shared public folders.",
+            "Users need a minimum of %d files in %d shared public folders.",
             (self.settings["num_files"], self.settings["num_folders"])
         )
 
-    def check_user(self, user, num_files, num_folders, source="server"):
+    def check_user(self, user, num_files, num_folders, num_locked_folders, shared_size, source="server"):
 
         if user not in self.probed_users:
             # We are not watching this user
@@ -103,35 +107,36 @@ class Plugin(BasePlugin):
             self.probed_users[user] = "okay"
 
             if is_user_accepted:
-                self.log("User %s is okay, sharing %s files in %s folders.", (user, num_files, num_folders))
+                self.log("[USER] %s OK - %s files %s folders %s locked/private", (user, num_files, num_folders, num_locked_folders))
             else:
-                self.log("Buddy %s is sharing %s files in %s folders. Not complaining.",
-                         (user, num_files, num_folders))
+                self.log("[BUDDY] %s OK - %s files %s folders %s locked/private",
+                         (user, num_files, num_folders, num_locked_folders))
             return
 
         if not self.probed_users[user].startswith("requesting"):
             # We already dealt with the user this session
             return
 
+        # if user is already in our leechers list
         if user in self.settings["detected_leechers"]:
-            # We already messaged the user in a previous session
+            # We already messaged the user in a previous session - class as processed
             self.probed_users[user] = "processed_leecher"
             return
 
+        # users stats are empty, check their shares
         if (num_files <= 0 or num_folders <= 0) and self.probed_users[user] != "requesting_shares":
             # SoulseekQt only sends the number of shared files/folders to the server once on startup.
             # Verify user's actual number of files/folders.
-            self.log("User %s has no shared files according to the server, requesting shares to verify…", user)
-
+            self.log("[USER] %s has no shared files according to the server, requesting shares…", user)
             self.probed_users[user] = "requesting_shares"
             self.core.userbrowse.request_user_shares(user)
             return
 
         if self.settings["message"]:
-            log_message = ("Leecher detected, %s is only sharing %s files in %s folders. Going to message "
+            log_message = ("[LEECHER DETECTED] - %s is only sharing %s files in %s folders. Going to message "
                            "leecher after transfer…")
         else:
-            log_message = ("Leecher detected, %s is only sharing %s files in %s folders. Going to log "
+            log_message = ("[LEECHER DETECTED] - %s is only sharing %s files in %s folders. Going to log "
                            "leecher after transfer…")
 
         self.probed_users[user] = "pending_leecher"
@@ -153,7 +158,7 @@ class Plugin(BasePlugin):
         self.core.users.request_user_stats(user)
 
     def user_stats_notification(self, user, stats):
-        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], source=stats["source"])
+        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], num_locked_folders=stats["priv_dirs"], source=stats["source"])
 
     def upload_finished_notification(self, user, *_):
 
@@ -166,7 +171,7 @@ class Plugin(BasePlugin):
         self.probed_users[user] = "processed_leecher"
 
         if not self.settings["message"]:
-            self.log("Leecher %s doesn't share enough files. No message is specified in plugin settings.", user)
+            self.log("[LEECHER] %s doesn't share enough files. No message is specified in plugin settings.", user)
             return
 
         for line in self.settings["message"].splitlines():
