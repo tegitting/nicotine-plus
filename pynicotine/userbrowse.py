@@ -377,6 +377,7 @@ class UserBrowse:
         username = msg.username
         browsed_user = self.users.get(username)
         num_folders = len(msg.list) + len(msg.privatelist)
+        num_locked_folders = len(msg.privatelist)
         num_files = 0
         shared_size = 0
 
@@ -390,6 +391,7 @@ class UserBrowse:
             browsed_user.public_folders = dict(msg.list)
             browsed_user.private_folders = dict(msg.privatelist)
             browsed_user.num_folders = num_folders
+            browsed_user.num__locked_folders = num_locked_folders
             browsed_user.num_files = num_files
             browsed_user.shared_size = shared_size
 
@@ -397,6 +399,7 @@ class UserBrowse:
             "avgspeed": None,
             "files": num_files,
             "dirs": num_folders,
+            "priv_dirs": num_locked_folders,
             "shared_size": shared_size,
             "source": "peer"
         })
