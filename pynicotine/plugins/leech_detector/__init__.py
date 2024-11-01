@@ -113,7 +113,7 @@ class Plugin(BasePlugin):
 
             if is_user_accepted:
                 self.log("[USER] %s OK - %s files %s folders %s locked/private",
-                (user, num_files, num_folders, num_locked_folders))
+                         (user, num_files, num_folders, num_locked_folders))
             else:
                 self.log("[BUDDY] %s OK - %s files %s folders %s locked/private",
                          (user, num_files, num_folders, num_locked_folders))
@@ -179,4 +179,4 @@ class Plugin(BasePlugin):
 
     def user_stats_notification(self, user, stats):
         self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"],
-        num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"], source=stats["source"])
+                        num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"], source=stats["source"])
