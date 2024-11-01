@@ -31,7 +31,7 @@ class Plugin(BasePlugin):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-        url="https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"
+        url = "https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"
         self.settings = {
             "message": "To avoid being banned please configure your shares - " + url,
             "open_private_chat": True,
@@ -78,11 +78,11 @@ class Plugin(BasePlugin):
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percentage_locked = self.metasettings["percentage_locked"]["minimum"]
-        if self.settings["num_files"] < min_num_files: 
+        if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
-        if self.settings["num_folders"] < min_num_folders: 
+        if self.settings["num_folders"] < min_num_folders:
             self.settings["num_folders"] = min_num_folders
-        if self.settings["percentage_locked"] < percentage_locked: 
+        if self.settings["percentage_locked"] < percentage_locked:
             self.settings["percentage_locked"] = percentage_locked
         self.log(
             "Users require %d files in %d shared folders and no more than %d percent locked/private.",
@@ -112,7 +112,7 @@ class Plugin(BasePlugin):
             self.probed_users[user] = "okay"
 
             if is_user_accepted:
-                self.log("[USER] %s OK - %s files %s folders %s locked/private", 
+                self.log("[USER] %s OK - %s files %s folders %s locked/private",
                 (user, num_files, num_folders, num_locked_folders))
             else:
                 self.log("[BUDDY] %s OK - %s files %s folders %s locked/private",
@@ -178,5 +178,5 @@ class Plugin(BasePlugin):
         self.core.users.request_user_stats(user)
 
     def user_stats_notification(self, user, stats):
-        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], num_locked_folders=stats["priv_dirs"], 
-        num_shared_size=stats["shared_size"], source=stats["source"])
+        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"],
+        num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"], source=stats["source"])
