@@ -24,7 +24,8 @@ class Plugin(BasePlugin):
 
     PLACEHOLDERS = {
         "%files%": "num_files",
-        "%folders%": "num_folders"
+        "%folders%": "num_folders",
+        "%locked%": "percentage_locked"
     }
 
     def __init__(self, *args, **kwargs):
@@ -37,6 +38,7 @@ class Plugin(BasePlugin):
             "num_files": 1,
             "num_folders": 1,
             "percentage_locked": 1,
+            "min_shared_size": 1,
             "detected_leechers": []
         }
         self.metasettings = {
@@ -50,7 +52,7 @@ class Plugin(BasePlugin):
             },
             "num_files": {
                 "description": "Require users to have a minimum number of shared files:",
-                "type": "int", "minimum": 0
+                "type": "int", "minimum": 1
             },
             "num_folders": {
                 "description": "Require users to have a minimum number of shared folders:",
@@ -58,6 +60,10 @@ class Plugin(BasePlugin):
             },
             "percentage_locked": {
                 "description": "The max percentage of locked/private folders allowed:",
+                "type": "int", "minimum": 1, "maximum": 100
+            },
+            "min_shared_size": {
+                "description": "The minimum (MBs) that must be shared by users",
                 "type": "int", "minimum": 1, "maximum": 100
             },
             "detected_leechers": {
@@ -72,16 +78,21 @@ class Plugin(BasePlugin):
 
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
+        max_locked_percentage = self.metasettings["percentage_locked"]["maximum"]
+
 
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
 
         if self.settings["num_folders"] < min_num_folders:
             self.settings["num_folders"] = min_num_folders
+            
+        if self.settings["percentage_locked"] < max_locked_percentage:
+            self.settings["percentage_locked"] = max_locked_percentage
 
         self.log(
-            "Users need a minimum of %d files in %d shared public folders.",
-            (self.settings["num_files"], self.settings["num_folders"])
+            "Users require %d files in %d shared folders and no more than %d percent locked/private.",
+            (self.settings["num_files"], self.settings["num_folders"], self.settings["percentage_locked"])
         )
 
     def check_user(self, user, num_files, num_folders, num_locked_folders, shared_size, source="server"):
@@ -133,14 +144,28 @@ class Plugin(BasePlugin):
             return
 
         if self.settings["message"]:
-            log_message = ("[LEECHER DETECTED] - %s is only sharing %s files in %s folders. Going to message "
-                           "leecher after transfer…")
+            log_message = ("[LEECHER DETECTED] - %s is only sharing %s files in %s folders. Message sent.")
         else:
-            log_message = ("[LEECHER DETECTED] - %s is only sharing %s files in %s folders. Going to log "
-                           "leecher after transfer…")
+            log_message = ("[LEECHER DETECTED] - %s is only sharing %s files in %s folders. No message sent.")
 
         self.probed_users[user] = "pending_leecher"
         self.log(log_message, (user, num_files, num_folders))
+        if not self.settings["message"]:
+            self.log("[LEECHER] %s doesn't share enough files. No message is specified in plugin settings.", user)
+            return
+
+        for line in self.settings["message"].splitlines():
+            for placeholder, option_key in self.PLACEHOLDERS.items():
+                # Replace message placeholders with actual values specified in the plugin settings
+                line = line.replace(placeholder, str(self.settings[option_key]))
+
+            self.send_private(user, line, show_ui=self.settings["open_private_chat"], switch_page=False)
+
+        if user not in self.settings["detected_leechers"]:
+            self.settings["detected_leechers"].append(user)
+            self.core.network_filter.ban_user(user)
+
+        self.log("[LEECHER] %s doesn't share enough files. Message sent.", user)
 
     def upload_queued_notification(self, user, virtual_path, real_path):
 
@@ -158,30 +183,4 @@ class Plugin(BasePlugin):
         self.core.users.request_user_stats(user)
 
     def user_stats_notification(self, user, stats):
-        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], num_locked_folders=stats["priv_dirs"], source=stats["source"])
-
-    def upload_finished_notification(self, user, *_):
-
-        if user not in self.probed_users:
-            return
-
-        if self.probed_users[user] != "pending_leecher":
-            return
-
-        self.probed_users[user] = "processed_leecher"
-
-        if not self.settings["message"]:
-            self.log("[LEECHER] %s doesn't share enough files. No message is specified in plugin settings.", user)
-            return
-
-        for line in self.settings["message"].splitlines():
-            for placeholder, option_key in self.PLACEHOLDERS.items():
-                # Replace message placeholders with actual values specified in the plugin settings
-                line = line.replace(placeholder, str(self.settings[option_key]))
-
-            self.send_private(user, line, show_ui=self.settings["open_private_chat"], switch_page=False)
-
-        if user not in self.settings["detected_leechers"]:
-            self.settings["detected_leechers"].append(user)
-
-        self.log("Leecher %s doesn't share enough files. Message sent.", user)
+        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"], source=stats["source"])
