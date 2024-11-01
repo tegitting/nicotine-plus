@@ -75,16 +75,15 @@ class Plugin(BasePlugin):
         self.probed_users = {}
 
     def loaded_notification(self):
-
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percentage_locked = self.metasettings["percentage_locked"]["minimum"]
-
-
-        if self.settings["num_files"] < min_num_files: self.settings["num_files"] = min_num_files
-        if self.settings["num_folders"] < min_num_folders: self.settings["num_folders"] = min_num_folders
-        if self.settings["percentage_locked"] < percentage_locked: self.settings["percentage_locked"] = percentage_locked
-
+        if self.settings["num_files"] < min_num_files: 
+            self.settings["num_files"] = min_num_files
+        if self.settings["num_folders"] < min_num_folders: 
+            self.settings["num_folders"] = min_num_folders
+        if self.settings["percentage_locked"] < percentage_locked: 
+            self.settings["percentage_locked"] = percentage_locked
         self.log(
             "Users require %d files in %d shared folders and no more than %d percent locked/private.",
             (self.settings["num_files"], self.settings["num_folders"], self.settings["percentage_locked"])
