@@ -31,9 +31,9 @@ class Plugin(BasePlugin):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-
+        url="https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"
         self.settings = {
-            "message": "To avoid being banned please configure your shares - https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek",
+            "message": "To avoid being banned please configure your shares - " + url,
             "open_private_chat": True,
             "num_files": 1,
             "num_folders": 1,
