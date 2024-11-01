@@ -179,5 +179,5 @@ class Plugin(BasePlugin):
 
     def user_stats_notification(self, user, stats):
         self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"],
-                        num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"], 
+                        num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"],
                         source=stats["source"])
