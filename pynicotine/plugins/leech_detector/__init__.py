@@ -64,7 +64,7 @@ class Plugin(BasePlugin):
             },
             "min_shared_size": {
                 "description": "The minimum (MBs) that must be shared by users",
-                "type": "int", "minimum": 1, "maximum": 100
+                "type": "int", "minimum": 1
             },
             "detected_leechers": {
                 "description": "Detected leechers",
@@ -78,17 +78,12 @@ class Plugin(BasePlugin):
 
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
-        max_locked_percentage = self.metasettings["percentage_locked"]["maximum"]
+        percentage_locked = self.metasettings["percentage_locked"]["minimum"]
 
 
-        if self.settings["num_files"] < min_num_files:
-            self.settings["num_files"] = min_num_files
-
-        if self.settings["num_folders"] < min_num_folders:
-            self.settings["num_folders"] = min_num_folders
-            
-        if self.settings["percentage_locked"] < max_locked_percentage:
-            self.settings["percentage_locked"] = max_locked_percentage
+        if self.settings["num_files"] < min_num_files: self.settings["num_files"] = min_num_files
+        if self.settings["num_folders"] < min_num_folders: self.settings["num_folders"] = min_num_folders
+        if self.settings["percentage_locked"] < percentage_locked: self.settings["percentage_locked"] = percentage_locked
 
         self.log(
             "Users require %d files in %d shared folders and no more than %d percent locked/private.",
@@ -118,7 +113,8 @@ class Plugin(BasePlugin):
             self.probed_users[user] = "okay"
 
             if is_user_accepted:
-                self.log("[USER] %s OK - %s files %s folders %s locked/private", (user, num_files, num_folders, num_locked_folders))
+                self.log("[USER] %s OK - %s files %s folders %s locked/private", 
+                (user, num_files, num_folders, num_locked_folders))
             else:
                 self.log("[BUDDY] %s OK - %s files %s folders %s locked/private",
                          (user, num_files, num_folders, num_locked_folders))
@@ -183,4 +179,5 @@ class Plugin(BasePlugin):
         self.core.users.request_user_stats(user)
 
     def user_stats_notification(self, user, stats):
-        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], num_locked_folders=stats["priv_dirs"], num_shared_size=stats["shared_size"], source=stats["source"])
+        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], num_locked_folders=stats["priv_dirs"], 
+        num_shared_size=stats["shared_size"], source=stats["source"])
