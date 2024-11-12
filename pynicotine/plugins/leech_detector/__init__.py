@@ -176,7 +176,7 @@ class Plugin(BasePlugin):
         # num_private_folders = stats.get("private_dirs")
         if "private_dirs" in stats:
             # if num_private_folders:
-            self.log("[INFO] %s stats where requested by the plugin %s", user)
+            self.log("[INFO] %s stats where requested by the plugin", user)
             # self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], source=stats["source"])
 
     def upload_finished_notification(self, user, *_):
