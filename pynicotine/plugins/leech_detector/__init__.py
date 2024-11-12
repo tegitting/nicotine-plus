@@ -18,6 +18,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pynicotine.pluginsystem import BasePlugin
+from pynicotine.utils import human_size
+from pynicotine.utils import human_speed
 
 
 class Plugin(BasePlugin):
@@ -32,21 +34,27 @@ class Plugin(BasePlugin):
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
+            "send_message": True,
             "open_private_chat": True,
+            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
             "num_files": 1,
             "num_folders": 1,
+            "percent_threshold": 1,
             "detected_leechers": []
         }
         self.metasettings = {
+            "send_message": {
+                "description": "Send a private message to detected leechers",
+                "type": "bool"
+            },
+            "open_private_chat": {
+                "description": "Open chat tabs when sending the private messages",
+                "type": "bool"
+            },
             "message": {
                 "description": ("Private chat message to send to leechers. Each line is sent as a separate message, "
                                 "too many message lines may get you temporarily banned for spam!"),
                 "type": "textview"
-            },
-            "open_private_chat": {
-                "description": "Open chat tabs when sending private messages to leechers",
-                "type": "bool"
             },
             "num_files": {
                 "description": "Require users to have a minimum number of shared files:",
@@ -55,6 +63,10 @@ class Plugin(BasePlugin):
             "num_folders": {
                 "description": "Require users to have a minimum number of shared folders:",
                 "type": "int", "minimum": 1
+            },
+            "percent_threshold": {
+                "description": "Maximum percentage of locked/private folders allowed:",
+                "type": "int", "minimum": 1, "maximum": 99
             },
             "detected_leechers": {
                 "description": "Detected leechers",
@@ -68,12 +80,16 @@ class Plugin(BasePlugin):
 
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
+        percent_allowed = self.metasettings["percent_threshold"]["minimum"]
 
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
 
         if self.settings["num_folders"] < min_num_folders:
             self.settings["num_folders"] = min_num_folders
+
+        if self.settings["percent_threshold"] < percent_allowed:
+            self.settings["percent_threshold"] = percent_allowed
 
         self.log(
             "Require users have a minimum of %d files in %d shared public folders.",
@@ -139,6 +155,7 @@ class Plugin(BasePlugin):
 
     def upload_queued_notification(self, user, virtual_path, real_path):
 
+        # already probing the user - ignore.
         if user in self.probed_users:
             return
 
@@ -148,12 +165,15 @@ class Plugin(BasePlugin):
             # Transfer manager will request the stats from the server shortly
             return
 
-        # We've received the user's stats in the past. They could be outdated by
-        # now, so request them again.
-        self.core.users.request_user_stats(user)
+        # a user has requested an upload, log it.
+        self.log("[INFO] Upload requested by %s - asking for users shares...", user)
+
+        # browse user which to invoke a user_stats_notification
+        self.core.userbrowse.browse_user(user)
 
     def user_stats_notification(self, user, stats):
-        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], source=stats["source"])
+        self.log("[INFO] Source of stats is %s", stats["source"])
+        # self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], source=stats["source"])
 
     def upload_finished_notification(self, user, *_):
 
