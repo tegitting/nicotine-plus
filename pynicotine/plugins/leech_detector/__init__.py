@@ -174,7 +174,7 @@ class Plugin(BasePlugin):
     def user_stats_notification(self, user, stats):
         self.log("[INFO] Source of stats is %s", stats["source"])
 
-        if stats["source"] == "peer" and self.probed_users[user] == "requesting_shares" :
+        if stats["source"] == "peer" and self.probed_users[user] == "requesting_shares":
             self.log("[INFO] %s stats where requested by the plugin", user)
             # self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], source=stats["source"])
 
