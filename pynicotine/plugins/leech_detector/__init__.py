@@ -173,7 +173,7 @@ class Plugin(BasePlugin):
 
     def user_stats_notification(self, user, stats):
         self.log("[INFO] Source of stats is %s", stats["source"])
-        # my_dict = stats 
+        # my_dict = stats
         # key_1 = 'source'
         # key_2 = 'private_dirs'
         if stats.get('source') is not None and stats.get('private_dirs') is not None:
