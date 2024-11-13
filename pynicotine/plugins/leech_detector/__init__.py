@@ -20,8 +20,6 @@
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
 from pynicotine.utils import human_speed
-from pynicotine.networkfilter import ban_user
-
 
 class Plugin(BasePlugin):
 
@@ -220,7 +218,7 @@ class Plugin(BasePlugin):
 
             # if a ban is required
             if self.settings["enable_ban"] is True:
-                self.networkfilter.ban_user(user)
+                self.core.network_filter.ban_user(user)
                 self.log("[DETECTED LEECH] %s has been banned.", user)
 
             # mark as processed
