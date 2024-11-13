@@ -41,6 +41,10 @@ class Plugin(BasePlugin):
             "detected_leechers": [],
         }
         self.metasettings = {
+            "enable_ban": {
+                "description": "Ban detected leechers",
+                "type": "bool",
+            },
             "send_message": {
                 "description": "Send a private message to detected leechers",
                 "type": "bool",
