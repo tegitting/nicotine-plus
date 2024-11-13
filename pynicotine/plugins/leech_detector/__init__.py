@@ -208,6 +208,7 @@ class Plugin(BasePlugin):
 
         # only process if private_dirs - we only get this in our custom userbrowse
         if stats.get("private_dirs") is not None:
+            self.probed_users[user] = "processing"
             # cleanup before processing
             # username = stats.get("username")
             files = stats.get("files")
@@ -219,7 +220,7 @@ class Plugin(BasePlugin):
             if str(stats.get("private_dirs")) != "0":
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
-                locked_percent = "100"
+                locked_percent = "0"
             # clean share size
             if stats.get("shared_size") is not None:
                 share_total = stats.get("shared_size")
