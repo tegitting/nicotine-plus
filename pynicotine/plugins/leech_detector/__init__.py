@@ -233,7 +233,7 @@ class Plugin(BasePlugin):
             user_validated = (
                 files >= self.settings["num_files"]
                 and folders >= self.settings["num_folders"]
-                and locked_percent < self.settings["percentage_threshold"]
+                and locked_percent < self.settings["percent_threshold"]
             )
 
             # when the user meets criteria or is a buddy
@@ -288,4 +288,5 @@ class Plugin(BasePlugin):
                 self.log("[DETECTED LEECH] %s has been banned.", user)
 
             # mark as processed
-            del self.downloaders[user]
+            if self.downloaders.get(user) is not None:
+                del self.downloaders[user]
