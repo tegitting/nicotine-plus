@@ -216,10 +216,10 @@ class Plugin(BasePlugin):
             # add up all the folders
             total_folders = folders + private_folders
             # calculate locked percentage
-            if private_folders:
+            if str(stats.get("private_dirs")) != "0":
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
-                locked_percent = "0"
+                locked_percent = "100"
             # clean share size
             if stats.get("shared_size") is not None:
                 share_total = stats.get("shared_size")
@@ -279,7 +279,7 @@ class Plugin(BasePlugin):
         
             # no message configured
             if not self.settings["message"]:
-                self.log("[DETECTED LEECH] No message specified in plugin.", user)
+                self.log("[DETECTED LEECH] No message sent to %s", user)
         
             # send the configured message
             else:
