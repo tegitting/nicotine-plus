@@ -141,47 +141,22 @@ class Plugin(BasePlugin):
                 self.probed_users[user] = "okay"
     
                 if is_user_accepted:
-                    self.log(
-                        "[USER] %s is OK. Sharing %s files %s folders with %s private. %s percent of %s is locked",
-                        (
-                            user,
-                            files,
-                            folders,
-                            private_folders,
-                            locked_percent,
-                            human_size(total),
-                        ),
-                    )
+                    self.log("[USER] %s is OK.", user)
                 else:
-                    self.log(
-                        "[BUDDY] %s has %s files in %s folders with %s private. %s percent of %s is locked.",
-                        (
-                            user,
-                            files,
-                            folders,
-                            private_folders,
-                            locked_percent,
-                            human_size(total),
-                        ),
-                    )
+                    self.log("[BUDDY] %s is OK.", user)
                 return
     
             if user in self.settings["detected_leechers"]:
                 # We already messaged the user in a previous session
                 self.probed_users[user] = "processed_leecher"
                 return
-            
-            self.probed_users[user] = "pending_leecher"
-            log_message = "[DETECTED LEECH] %s has %s files %s folders and %s private. %s percent of %s locked."
-            self.log(
-                log_message,
-                (user, files, folders, private_folders, locked_percent, human_size(total)),
-            )
+
+            self.log("[DETECTED LEECH] %s ...", user)
     
             # no message configured
             if not self.settings["message"]:
                 self.log(
-                    "[DETECTED LEECH] %s doesn't share enough. No message specified in plugin.",
+                    "[DETECTED LEECH] No message specified in plugin.",
                     user,
                 )
     
@@ -198,7 +173,7 @@ class Plugin(BasePlugin):
                         switch_page=False,
                     )
                 self.log(
-                    "[DETECTED LEECH] %s doesn't share enough. A message was sent.", user
+                    "[DETECTED LEECH] A message was sent to %s", user
                 )
     
             # add the user to the detected leecher list
