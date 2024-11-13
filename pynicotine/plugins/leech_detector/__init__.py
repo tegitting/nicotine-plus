@@ -222,31 +222,31 @@ class Plugin(BasePlugin):
         # only process if private_dirs in stats and we have asked the user for shares
         if stats.get('private_dirs') is not None and self.probed_users[user] == "requesting_shares":
 
-        # cleanup before processing
-        files = stats["files"]
-        folders = stats["dirs"]
-        private_folders = stats["private_dirs"]
-        share_total = stats["shared_size"]
-        # add up all the folders
-        total_folders = folders + private_folders
-        # calculate locked percentage
-        if private_folders:
-            locked_percent = round((private_folders / total_folders) * 100)
-        else:
-            locked_percent = 0
-    
-        # log our progress
-        self.log("[INFO] %s shares received, processing...", user)
-        
-        # invoke check user
-        self.check_user(
-            user,
-            files,
-            folders,
-            private_folders,
-            locked_percent,
-            share_total,
-        )
+            # cleanup before processing
+            files = stats["files"]
+            folders = stats["dirs"]
+            private_folders = stats["private_dirs"]
+            share_total = stats["shared_size"]
+            # add up all the folders
+            total_folders = folders + private_folders
+            # calculate locked percentage
+            if private_folders:
+                locked_percent = round((private_folders / total_folders) * 100)
+            else:
+                locked_percent = 0
+                
+            # log our progress
+            self.log("[INFO] %s shares received, processing...", user)
+            
+            # invoke check user
+            self.check_user(
+                user,
+                files,
+                folders,
+                private_folders,
+                locked_percent,
+                share_total,
+            )
 
     def upload_finished_notification(self, user, *_):
 
