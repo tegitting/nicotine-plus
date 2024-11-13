@@ -24,10 +24,7 @@ from pynicotine.utils import human_speed
 
 class Plugin(BasePlugin):
 
-    PLACEHOLDERS = {
-        "%files%": "num_files",
-        "%folders%": "num_folders"
-    }
+    PLACEHOLDERS = {"%files%": "num_files", "%folders%": "num_folders"}
 
     def __init__(self, *args, **kwargs):
 
@@ -41,38 +38,44 @@ class Plugin(BasePlugin):
             "num_files": 1,
             "num_folders": 1,
             "percent_threshold": 1,
-            "detected_leechers": []
+            "detected_leechers": [],
         }
         self.metasettings = {
             "send_message": {
                 "description": "Send a private message to detected leechers",
-                "type": "bool"
+                "type": "bool",
             },
             "open_private_chat": {
                 "description": "Open chat tabs when sending the private messages",
-                "type": "bool"
+                "type": "bool",
             },
             "message": {
-                "description": ("Private chat message to send to leechers. Each line is sent as a separate message, "
-                                "too many message lines may get you temporarily banned for spam!"),
-                "type": "textview"
+                "description": (
+                    "Private chat message to send to leechers. Each line is sent as a separate message, "
+                    "too many message lines may get you temporarily banned for spam!"
+                ),
+                "type": "textview",
             },
             "num_files": {
                 "description": "Require users to have a minimum number of shared files:",
-                "type": "int", "minimum": 0
+                "type": "int",
+                "minimum": 0,
             },
             "num_folders": {
                 "description": "Require users to have a minimum number of shared folders:",
-                "type": "int", "minimum": 1
+                "type": "int",
+                "minimum": 1,
             },
             "percent_threshold": {
                 "description": "Maximum percentage of locked/private folders allowed:",
-                "type": "int", "minimum": 1, "maximum": 99
+                "type": "int",
+                "minimum": 1,
+                "maximum": 99,
             },
             "detected_leechers": {
                 "description": "Detected leechers",
-                "type": "list string"
-            }
+                "type": "list string",
+            },
         }
 
         self.probed_users = {}
@@ -94,7 +97,7 @@ class Plugin(BasePlugin):
 
         self.log(
             "Require users have a minimum of %d files in %d shared public folders.",
-            (self.settings["num_files"], self.settings["num_folders"])
+            (self.settings["num_files"], self.settings["num_folders"]),
         )
 
     def check_user(self, user, files, folders, private_folders, locked_percent, total):
@@ -220,7 +223,10 @@ class Plugin(BasePlugin):
     def user_stats_notification(self, user, stats):
 
         # only process if private_dirs in stats and we have asked the user for shares
-        if stats.get('private_dirs') is not None and self.probed_users[user] == "requesting_shares":
+        if (
+            stats.get("private_dirs") is not None
+            and self.probed_users[user] == "requesting_shares"
+        ):
 
             # cleanup before processing
             files = stats["files"]
@@ -234,10 +240,10 @@ class Plugin(BasePlugin):
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
                 locked_percent = 0
-                
+
             # log our progress
             self.log("[INFO] %s shares received, processing...", user)
-            
+
             # invoke check user
             self.check_user(
                 user,
@@ -247,29 +253,3 @@ class Plugin(BasePlugin):
                 locked_percent,
                 share_total,
             )
-
-    def upload_finished_notification(self, user, *_):
-
-        if user not in self.probed_users:
-            return
-
-        if self.probed_users[user] != "pending_leecher":
-            return
-
-        self.probed_users[user] = "processed_leecher"
-
-        if not self.settings["message"]:
-            self.log("Leecher %s doesn't share enough files. No message is specified in plugin settings.", user)
-            return
-
-        for line in self.settings["message"].splitlines():
-            for placeholder, option_key in self.PLACEHOLDERS.items():
-                # Replace message placeholders with actual values specified in the plugin settings
-                line = line.replace(placeholder, str(self.settings[option_key]))
-
-            self.send_private(user, line, show_ui=self.settings["open_private_chat"], switch_page=False)
-
-        if user not in self.settings["detected_leechers"]:
-            self.settings["detected_leechers"].append(user)
-
-        self.log("Leecher %s doesn't share enough files. Message sent.", user)
