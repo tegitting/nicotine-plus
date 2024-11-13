@@ -110,18 +110,6 @@ class Plugin(BasePlugin):
             # User was already accepted previously, nothing to do
             return
 
-        self.log(
-            "[USER] %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
-            (
-                user,
-                files,
-                folders,
-                private_folders,
-                locked_percent,
-                human_size(total),
-            ),
-        )
-
         if self.probed_users[user] != "requesting_shares":
             # We already dealt with the user this session
             return
@@ -204,7 +192,7 @@ class Plugin(BasePlugin):
         # only process if private_dirs in stats - we only get this in our customised userbrowse
         if stats.get("private_dirs") is not None:
             self.probed_users[user] = "processing"
-            # raw stats
+            # convert stats to parameters
             files = stats.get("files")
             folders = stats.get("dirs")
             private_folders = stats.get("private_dirs")
@@ -224,8 +212,7 @@ class Plugin(BasePlugin):
             # log our progress
             self.log("[USER] %s shares received...", user)
 
-            # invoke check user
-            # self.check_user(username, files, folders, private_folders, locked_percent, share_total)
+            # display the users stats
             self.log(
                 "[USER] %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
                 (
@@ -239,7 +226,7 @@ class Plugin(BasePlugin):
             )
             
             # We already dealt with the user this session
-            if self.downloaders[user] != "Yes":
+            if self.downloaders.get(user) == None:
                 return
 
             # conditions to avoid detection
