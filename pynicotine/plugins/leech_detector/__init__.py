@@ -81,8 +81,8 @@ class Plugin(BasePlugin):
                 "type": "list string",
             },
         }
-
         self.probed_users = {}
+        self.downloaders = {}
 
     def loaded_notification(self):
 
@@ -189,23 +189,21 @@ class Plugin(BasePlugin):
     def upload_queued_notification(self, user, virtual_path, real_path):
 
         # already probing the user - ignore.
-        if user in self.probed_users:
+        if user in self.downloaders:
             return
 
         # a user has requested an upload, log it.
-        self.log("[USER] %s requested and upload - asking for users shares...", user)
+        self.log("[USER] %s requested and upload - asking user for shares...", user)
 
         # browseuser which invokes a user_stats_notification
         self.core.userbrowse.browse_user(user)
-        self.probed_users[user]["initiator"] = "upload"
+        self.downloaders[user] = "Yes"
 
     def user_stats_notification(self, user, stats):
 
         # only process if private_dirs in stats - we only get this in our customised userbrowse
         if stats.get("private_dirs") is not None:
-            # setkey
-            self.probed_users[user]["status"] = "processing"
-            
+            self.probed_users[user] = "processing"
             # raw stats
             files = stats.get("files")
             folders = stats.get("dirs")
@@ -239,14 +237,9 @@ class Plugin(BasePlugin):
                     human_size(share_total),
                 ),
             )
-
-            try:
-                self.probed_users[user]["initiator"]
-            except KeyError:
-                return
             
             # We already dealt with the user this session
-            if not self.probed_users[user].startswith("requesting"):
+            if self.downloaders[user] != "Yes":
                 return
 
             # conditions to avoid detection
@@ -308,4 +301,4 @@ class Plugin(BasePlugin):
                 self.log("[DETECTED LEECH] %s has been banned.", user)
 
             # mark as processed
-            self.probed_users[user] = "processed_leecher"
+            del self.downloaders[user]
