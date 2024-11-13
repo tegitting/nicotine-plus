@@ -194,12 +194,12 @@ class Plugin(BasePlugin):
 
         self.probed_users[user] = "requesting_shares"
 
-        if user not in self.core.users.watched:
-            # Transfer manager will request the stats from the server shortly
-            return
+        # if user not in self.core.users.watched:
+        # Transfer manager will request the stats from the server shortly
+        # return
 
         # a user has requested an upload, log it.
-        self.log("[INFO] Upload requested by %s - asking for users shares...", user)
+        self.log("[USER] %s requested and upload - asking for users shares...", user)
 
         # browse user which invokes a user_stats_notification
         self.core.userbrowse.browse_user(user)
@@ -209,7 +209,7 @@ class Plugin(BasePlugin):
         # only process if private_dirs - we only get this in our custom userbrowse
         if stats.get("private_dirs") is not None:
             # cleanup before processing
-            username = stats.get("username")
+            # username = stats.get("username")
             files = stats.get("files")
             folders = stats.get("dirs")
             private_folders = stats.get("private_dirs")
@@ -220,14 +220,93 @@ class Plugin(BasePlugin):
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
                 locked_percent = "0"
-            
+            # clean share size
             if stats.get("shared_size") is not None:
                 share_total = stats.get("shared_size")
             else:
                 share_total = "0"
 
             # log our progress
-            self.log("[INFO] %s received...", user)
+            self.log("[USER] %s shares received...", user)
 
+            # User was already accepted previously, nothing to do
+            if self.probed_users[user] == "okay":
+                return
+            
             # invoke check user
-            self.check_user(username, files, folders, private_folders, locked_percent, share_total)
+            # self.check_user(username, files, folders, private_folders, locked_percent, share_total)
+            self.log(
+                "[USER] %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
+                (
+                    user,
+                    files,
+                    folders,
+                    private_folders,
+                    locked_percent,
+                    human_size(share_total),
+                ),
+            )
+            # We already dealt with the user this session
+            if not self.probed_users[user].startswith("requesting"):
+                return
+
+            # conditions to avoid detection
+            user_validated = (
+                files >= self.settings["num_files"]
+                and folders >= self.settings["num_folders"]
+                and locked_percent < self.settings["percentage_threshold"]
+            )
+            
+            # when the user meets criteria or is a buddy
+            if user_validated or user in self.core.buddies.users:
+                # check if they exist in the leechers list
+                if user in self.settings["detected_leechers"]:
+                    # and remove them
+                    self.settings["detected_leechers"].remove(user)
+        
+                    # mark the user as OK
+                    self.probed_users[user] = "okay"
+
+                    # log progress
+                    if is_user_accepted:
+                        self.log("[USER] %s is OK.", user)
+                    else:
+                        self.log("[BUDDY] %s is OK.", user)
+                    return
+        
+            if user in self.settings["detected_leechers"]:
+                # We already messaged the user in a previous session
+                self.probed_users[user] = "processed_leecher"
+                return
+    
+            self.log("[DETECTED LEECH] %s ...", user)
+        
+            # no message configured
+            if not self.settings["message"]:
+                self.log("[DETECTED LEECH] No message specified in plugin.", user)
+        
+            # send the configured message
+            else:
+                for line in self.settings["message"].splitlines():
+                    for placeholder, option_key in self.PLACEHOLDERS.items():
+                        # Replace message placeholders with actual values specified in the plugin settings
+                        line = line.replace(placeholder, str(self.settings[option_key]))
+                    self.send_private(
+                        user,
+                        line,
+                        show_ui=self.settings["open_private_chat"],
+                        switch_page=False,
+                    )
+                self.log("[DETECTED LEECH] A message was sent to %s", user)
+        
+            # add the user to the detected leecher list
+            if user not in self.settings["detected_leechers"]:
+                self.settings["detected_leechers"].append(user)
+        
+            # if a ban is required
+            if self.settings["enable_ban"] is True:
+                self.core.networkfilter.ban_user(user)
+                self.log("[DETECTED LEECH] %s has been banned.", user)
+            
+            # mark as processed
+            self.probed_users[user] = "processed_leecher"
