@@ -228,10 +228,6 @@ class Plugin(BasePlugin):
 
             # log our progress
             self.log("[USER] %s shares received...", user)
-
-            # User was already accepted previously, nothing to do
-            if self.probed_users[user] == "okay":
-                return
             
             # invoke check user
             # self.check_user(username, files, folders, private_folders, locked_percent, share_total)
