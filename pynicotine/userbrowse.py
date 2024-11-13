@@ -395,7 +395,7 @@ class UserBrowse:
             browsed_user.shared_size = shared_size
 
         core.pluginhandler.user_stats_notification(username, stats={
-            "avgspeed": None,
+            "username": username,
             "files": num_files,
             "dirs": num_folders,
             "private_dirs": private_folders,
