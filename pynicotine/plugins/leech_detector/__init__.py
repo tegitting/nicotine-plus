@@ -170,7 +170,7 @@ class Plugin(BasePlugin):
                 and int(locked_percent) < self.settings["percent_threshold"]
             )
 
-            # when the user meets criteria or is a buddy
+            # when the user meets criteria or is a buddy..
             if user_validated or user in self.core.buddies.users:
                 # check if they exist in the leechers list
                 if user in self.settings["detected_leechers"]:
