@@ -192,29 +192,25 @@ class Plugin(BasePlugin):
         if user in self.probed_users:
             return
 
-        self.probed_users[user] = "requesting_shares"
-
-        # if user not in self.core.users.watched:
-        # Transfer manager will request the stats from the server shortly
-        # return
-
         # a user has requested an upload, log it.
         self.log("[USER] %s requested and upload - asking for users shares...", user)
 
-        # browse user which invokes a user_stats_notification
+        # browseuser which invokes a user_stats_notification
         self.core.userbrowse.browse_user(user)
+        self.probed_users[user]["initiator"] = "upload"
 
     def user_stats_notification(self, user, stats):
 
-        # only process if private_dirs - we only get this in our custom userbrowse
+        # only process if private_dirs in stats - we only get this in our customised userbrowse
         if stats.get("private_dirs") is not None:
-            self.probed_users[user] = "processing"
-            # cleanup before processing
-            # username = stats.get("username")
+            # setkey
+            self.probed_users[user]["status"] = "processing"
+            
+            # raw stats
             files = stats.get("files")
             folders = stats.get("dirs")
             private_folders = stats.get("private_dirs")
-            # add up all the folders
+            # count all folders
             total_folders = folders + private_folders
             # calculate locked percentage
             if str(stats.get("private_dirs")) != "0":
@@ -243,6 +239,12 @@ class Plugin(BasePlugin):
                     human_size(share_total),
                 ),
             )
+
+            try:
+                self.probed_users[user]["initiator"]
+            except KeyError:
+                return
+            
             # We already dealt with the user this session
             if not self.probed_users[user].startswith("requesting"):
                 return
@@ -273,7 +275,7 @@ class Plugin(BasePlugin):
 
             if user in self.settings["detected_leechers"]:
                 # We already messaged the user in a previous session
-                self.probed_users[user] = "processed_leecher"
+                # self.probed_users[user] = "processed_leecher"
                 return
 
             self.log("[DETECTED LEECH] %s ...", user)
