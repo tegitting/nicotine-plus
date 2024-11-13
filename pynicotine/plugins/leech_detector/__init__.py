@@ -167,7 +167,7 @@ class Plugin(BasePlugin):
             user_validated = (
                 files >= self.settings["num_files"]
                 and folders >= self.settings["num_folders"]
-                and locked_percent < self.settings["percent_threshold"]
+                and int(locked_percent) < self.settings["percent_threshold"]
             )
 
             # when the user meets criteria or is a buddy
@@ -192,7 +192,7 @@ class Plugin(BasePlugin):
                 # self.probed_users[user] = "processed_leecher"
                 return
 
-            self.log("[DETECTED LEECH] %s ...", user)
+            self.log("[DETECTED LEECH] %s is not sharing enough...", user)
 
             # no message configured
             if not self.settings["message"]:
