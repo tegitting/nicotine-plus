@@ -32,8 +32,8 @@ class Plugin(BasePlugin):
 
         self.settings = {
             "enable_ban": False,
-            "send_message": True,
-            "open_private_chat": True,
+            "send_message": False,
+            "open_private_chat": False,
             "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
             "num_files": 1,
             "num_folders": 1,
@@ -209,6 +209,7 @@ class Plugin(BasePlugin):
         # only process if private_dirs - we only get this in our custom userbrowse
         if stats.get("private_dirs") is not None:
             # cleanup before processing
+            username = stats.get("username")
             files = stats.get("files")
             folders = stats.get("dirs")
             private_folders = stats.get("private_dirs")
@@ -229,4 +230,4 @@ class Plugin(BasePlugin):
             self.log("[INFO] %s received...", user)
 
             # invoke check user
-            self.check_user(user, files, folders, private_folders, locked_percent, share_total)
+            self.check_user(username, files, folders, private_folders, locked_percent, share_total)
