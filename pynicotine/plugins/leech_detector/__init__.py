@@ -106,10 +106,6 @@ class Plugin(BasePlugin):
         
     def check_user(self, user, files, folders, private_folders, locked_percent, total):
 
-        if user not in self.probed_users:
-            # We are not watching this user
-            return
-
         if self.probed_users[user] == "okay":
             # User was already accepted previously, nothing to do
             return
