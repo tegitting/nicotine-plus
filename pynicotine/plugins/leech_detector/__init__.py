@@ -181,7 +181,7 @@ class Plugin(BasePlugin):
                     self.probed_users[user] = "okay"
 
                     # log progress
-                    if is_user_accepted:
+                    if user_validated:
                         self.log("[USER] %s is OK.", user)
                     else:
                         self.log("[BUDDY] %s is OK.", user)
