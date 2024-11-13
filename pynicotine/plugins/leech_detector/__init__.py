@@ -227,10 +227,7 @@ class Plugin(BasePlugin):
     def user_stats_notification(self, user, stats):
 
         # only process if private_dirs in stats and we have asked the user for shares
-        if (
-            stats.get("private_dirs") is not None
-            and self.probed_users[user] == "requesting_shares"
-        ):
+        if stats.get("private_dirs") is not None and self.probed_users[user] == "requesting_shares":
 
             # cleanup before processing
             files = stats["files"]
