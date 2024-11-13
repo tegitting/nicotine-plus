@@ -103,7 +103,7 @@ class Plugin(BasePlugin):
             "Require users have a minimum of %d files in %d shared public folders.",
             (self.settings["num_files"], self.settings["num_folders"]),
         )
-
+        
     def check_user(self, user, files, folders, private_folders, locked_percent, total):
 
         if user not in self.probed_users:
@@ -114,6 +114,20 @@ class Plugin(BasePlugin):
             # User was already accepted previously, nothing to do
             return
 
+        if self.probed_users[user] != "downloader":
+            self.log(
+                "[USER] %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
+                (
+                    user,
+                    files,
+                    folders,
+                    private_folders,
+                    locked_percent,
+                    human_size(total),
+                ),
+            )
+            return
+            
         # conditions to avoid detection
         is_user_validated = (
             files >= self.settings["num_files"]
@@ -156,7 +170,7 @@ class Plugin(BasePlugin):
                 )
             return
 
-        if not self.probed_users[user].startswith("requesting"):
+        if self.probed_users[user] != "downloader":
             # We already dealt with the user this session
             return
 
@@ -164,7 +178,8 @@ class Plugin(BasePlugin):
             # We already messaged the user in a previous session
             self.probed_users[user] = "processed_leecher"
             return
-
+        
+        self.probed_users[user] = "pending_leecher"
         log_message = "[DETECTED LEECH] %s has %s files %s folders and %s private. %s percent of %s locked."
         self.log(
             log_message,
@@ -212,7 +227,7 @@ class Plugin(BasePlugin):
         if user in self.probed_users:
             return
 
-        self.probed_users[user] = "requesting_shares"
+        self.probed_users[user] = "downloader"
 
         if user not in self.core.users.watched:
             # Transfer manager will request the stats from the server shortly
@@ -221,19 +236,17 @@ class Plugin(BasePlugin):
         # a user has requested an upload, log it.
         self.log("[INFO] Upload requested by %s - asking for users shares...", user)
 
-        # browse user which to invoke a user_stats_notification
+        # browse user which invokes a user_stats_notification
         self.core.userbrowse.browse_user(user)
 
     def user_stats_notification(self, user, stats):
 
-        # only process if private_dirs in stats and we have asked the user for shares
-        if stats.get("private_dirs") is not None and self.probed_users[user] == "requesting_shares":
-
+        # only process if private_dirs - we only get this in our custom userbrowse
+        if stats.get("private_dirs") is not None:
             # cleanup before processing
             files = stats["files"]
             folders = stats["dirs"]
             private_folders = stats["private_dirs"]
-            share_total = stats["shared_size"]
             # add up all the folders
             total_folders = folders + private_folders
             # calculate locked percentage
@@ -241,9 +254,10 @@ class Plugin(BasePlugin):
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
                 locked_percent = 0
+            share_total = stats["shared_size"]
 
             # log our progress
-            self.log("[INFO] %s shares received, processing...", user)
+            self.log("[INFO] Processing %s shares...", user)
 
             # invoke check user
             self.check_user(
