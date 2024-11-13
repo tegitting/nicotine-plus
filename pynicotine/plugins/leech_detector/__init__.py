@@ -122,7 +122,7 @@ class Plugin(BasePlugin):
             ),
         )
 
-        if not self.probed_users[user].startswith("requesting"):
+        if self.probed_users[user] != "requesting_shares":
             # We already dealt with the user this session
             return
 
@@ -220,7 +220,7 @@ class Plugin(BasePlugin):
             if str(stats.get("private_dirs")) != "0":
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
-                locked_percent = "0"
+                locked_percent = 0
             # clean share size
             if stats.get("shared_size") is not None:
                 share_total = stats.get("shared_size")
