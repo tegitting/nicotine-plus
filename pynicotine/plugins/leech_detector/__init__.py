@@ -161,6 +161,7 @@ class Plugin(BasePlugin):
                 return
             if user in self.probed_downloaders:
                 # user is a downloader, check him
+                self.log("[USER] %s is a downloader - checking...", user)
                 self.check_downloader(
                     user, files, folders, locked_percent
                 )
