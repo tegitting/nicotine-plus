@@ -156,17 +156,43 @@ class Plugin(BasePlugin):
                     human_size(share_total),
                 ),
             )
-            
+
             if user in self.probed_downloaders:
                 # user is a downloader, check him
                 self.log("[USER] %s is a downloader - checking...", user)
-                self.check_downloader(
-                    user, files, folders, locked_percent
-                )
+                self.check_downloader(user, files, folders, locked_percent)
 
     def check_downloader(self, user, files, folders, locked_percent):
 
         # conditions to avoid detection
+
+        if files >= self.settings["num_files"]:
+            self.log("[USER] files OK - %s > %s", files, self.settings["num_files"])
+        else:
+            self.log("[USER] files not OK - %s < %s", files, self.settings["num_files"])
+
+        if folders >= self.settings["num_folders"]:
+            self.log(
+                "[USER] folders OK - %s > %s", folders, self.settings["num_folders"]
+            )
+        else:
+            self.log(
+                "[USER] folders not OK - %s < %s", files, self.settings["num_files"]
+            )
+
+        if locked_percent >= self.settings["percent_threshold"]:
+            self.log(
+                "[USER] percentage OK - %s > %s",
+                locked_percent,
+                self.settings["percent_threshold"],
+            )
+        else:
+            self.log(
+                "[USER] percentage not OK - %s < %s",
+                locked_percent,
+                self.settings["percent_threshold"],
+            )
+
         user_validated = (
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
