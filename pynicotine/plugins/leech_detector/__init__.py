@@ -107,7 +107,7 @@ class Plugin(BasePlugin):
     def upload_queued_notification(self, user, virtual_path, real_path):
 
         # already know the user is a downloader - ignore
-        if user in self.probed_downloaders is True:
+        if user in self.probed_downloaders:
             return
 
         # a user has requested an upload, log it.
@@ -134,7 +134,7 @@ class Plugin(BasePlugin):
             # count all folders
             total_folders = folders + private_folders
             # calculate locked percentage
-            if stats.get("private_dirs") != 0:
+            if stats.get("private_dirs"):
                 locked_percent = round((private_folders / total_folders) * 100)
             else:
                 locked_percent = 0
@@ -159,7 +159,7 @@ class Plugin(BasePlugin):
             if user in self.settings["detected_leechers"]:
                 # We already messaged the user in a previous session
                 return
-            if user in self.probed_downloaders is False:
+            if self.probed_downloaders.get(user) is None:
                 # user is not downloading, stop here
                 return
             # user is a downloader, check him
