@@ -163,7 +163,7 @@ class Plugin(BasePlugin):
                 # user is not downloading, stop here
                 return
             # user is a downloader, check him
-            check_downloader(
+            self.check_downloader(
                 user, files, folders, locked_percent
             )
 
