@@ -220,15 +220,11 @@ class Plugin(BasePlugin):
                 # log progress
                 self.log("[DETECTED LEECH] A message was sent to %s", user)
 
-            # add the user to the detected leecher list
-            if user not in self.settings["detected_leechers"]:
-                self.settings["detected_leechers"].append(user)
+        # add the user to the detected leecher list
+        if user not in self.settings["detected_leechers"]:
+            self.settings["detected_leechers"].append(user)
 
-            # if a ban is required
-            if self.settings["enable_ban"] is True:
-                self.core.network_filter.ban_user(user)
-                self.log("[DETECTED LEECH] %s has been banned.", user)
-
-            # mark as processed
-            # if self.probed_downloaders.get(user) is not None:
-            # del self.probed_downloaders[user]
+        # if a ban is required
+        if self.settings["enable_ban"] is True:
+            self.core.network_filter.ban_user(user)
+            self.log("[DETECTED LEECH] %s has been banned.", user)
