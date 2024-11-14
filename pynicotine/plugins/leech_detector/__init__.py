@@ -160,7 +160,7 @@ class Plugin(BasePlugin):
             if user in self.probed_downloaders:
                 # user is a downloader, check him
                 self.log(
-                    "[USER] %s is a downloader - checking...", 
+                    "User %s is a downloader - checking...", 
                     (
                         user,
                     ),
@@ -173,7 +173,7 @@ class Plugin(BasePlugin):
 
         if files >= self.settings["num_files"]:
             self.log(
-                "[USER] files OK - %s vs %s", 
+                "User files OK - %s vs %s", 
                 (
                     files, 
                     self.settings["num_files"],
@@ -181,7 +181,7 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "[USER] files not OK - %s vs %s", 
+                "User files not OK - %s vs %s", 
                 (
                     files, 
                     self.settings["num_files"],
@@ -190,7 +190,7 @@ class Plugin(BasePlugin):
 
         if folders >= self.settings["num_folders"]:
             self.log(
-                "[USER] folders OK - %s vs %s", 
+                "User folders OK - %s vs %s", 
                 (
                     folders, 
                     self.settings["num_folders"],
@@ -198,7 +198,7 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "[USER] folders not OK - %s vs %s", 
+                "User folders not OK - %s vs %s", 
                 (
                     files, 
                     self.settings["num_files"],
@@ -207,7 +207,7 @@ class Plugin(BasePlugin):
 
         if locked_percent < self.settings["percent_threshold"]:
             self.log(
-                "[USER] percentage OK - %s vs %s",
+                "User percentage OK - %s vs %s",
                 (
                     locked_percent,
                     self.settings["percent_threshold"],
@@ -215,7 +215,7 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "[USER] percentage not OK - %s vs %s",
+                "User locked percentage not OK - %s vs %s",
                 (
                     locked_percent,
                     self.settings["percent_threshold"],
@@ -239,13 +239,13 @@ class Plugin(BasePlugin):
 
                 # log progress
                 if user_validated:
-                    self.log("[USER] %s is OK.", user)
+                    self.log("User %s is OK.", user)
                 else:
-                    self.log("[BUDDY] %s is OK.", user)
+                    self.log("Buddy %s is OK.", user)
                 return
 
         # if we got here, the user is a detected leecher - log progress
-        self.log("[DETECTED LEECH] %s is not sharing enough...", user)
+        self.log("User %s is not sharing enough...", user)
 
         # if messaging turned on
         if self.settings["send_message"] is True:
@@ -254,7 +254,7 @@ class Plugin(BasePlugin):
             if not self.settings["message"]:
                 # log it
                 self.log(
-                    "[DETECTED LEECH] No message sent to %s - not configured in plugin",
+                    "User %s is leeching, no message configured in plugin",
                     user,
                 )
 
@@ -271,7 +271,7 @@ class Plugin(BasePlugin):
                         switch_page=False,
                     )
                 # log progress
-                self.log("[DETECTED LEECH] A message was sent to %s", user)
+                self.log("User %s is leeching - a message was sent", user)
 
         # add the user to the detected leecher list
         if user not in self.settings["detected_leechers"]:
@@ -280,4 +280,4 @@ class Plugin(BasePlugin):
         # if a ban is required
         if self.settings["enable_ban"] is True:
             self.core.network_filter.ban_user(user)
-            self.log("[DETECTED LEECH] %s has been banned.", user)
+            self.log("User %s has been banned.", user)
