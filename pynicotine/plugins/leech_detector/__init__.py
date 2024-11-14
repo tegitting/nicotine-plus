@@ -107,7 +107,7 @@ class Plugin(BasePlugin):
     def upload_queued_notification(self, user, virtual_path, real_path):
 
         # already know the user is a downloader - ignore
-        if user in self.probed_downloaders == True:
+        if user in self.probed_downloaders is True:
             return
 
         # a user has requested an upload, log it.
@@ -159,7 +159,7 @@ class Plugin(BasePlugin):
             if user in self.settings["detected_leechers"]:
                 # We already messaged the user in a previous session
                 return
-            elif user not in self.probed_downloaders:
+            elif user in self.probed_downloaders is False:
                 # user is not downloading, stop here
                 return
             else:
