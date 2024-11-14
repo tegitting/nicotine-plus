@@ -128,21 +128,21 @@ class Plugin(BasePlugin):
             # add user to probed_users dict with a value
             self.probed_users[user] = "processing_stats"
             # convert stats to parameters
-            files = stats.get("files")
-            folders = stats.get("dirs")
-            private_folders = stats.get("private_dirs")
+            files = int(stats.get("files"))
+            folders = int(stats.get("dirs"))
+            private_folders = int(stats.get("private_dirs"))
             # count all folders
             total_folders = folders + private_folders
             # calculate locked percentage
             if stats.get("private_dirs"):
-                locked_percent = round((private_folders / total_folders) * 100)
+                locked_percent = int(round((private_folders / total_folders) * 100))
             else:
                 locked_percent = 0
             # clean share size
             if stats.get("shared_size") is not None:
-                share_total = stats.get("shared_size")
+                share_total = int(stats.get("shared_size"))
             else:
-                share_total = "0"
+                share_total = 0
 
             # display the users shares
             self.log(
