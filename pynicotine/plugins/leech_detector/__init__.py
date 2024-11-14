@@ -159,7 +159,12 @@ class Plugin(BasePlugin):
 
             if user in self.probed_downloaders:
                 # user is a downloader, check him
-                self.log("[USER] %s is a downloader - checking...", user)
+                self.log(
+                    "[USER] %s is a downloader - checking...", 
+                    (
+                        user,
+                    ),
+                )
                 self.check_downloader(user, files, folders, locked_percent)
 
     def check_downloader(self, user, files, folders, locked_percent):
@@ -167,30 +172,54 @@ class Plugin(BasePlugin):
         # conditions to avoid detection
 
         if files >= self.settings["num_files"]:
-            self.log("[USER] files OK - %s vs %s", files, self.settings["num_files"])
-        else:
-            self.log("[USER] files not OK - %s vs %s", files, self.settings["num_files"])
-
-        if folders >= self.settings["num_folders"]:
             self.log(
-                "[USER] folders OK - %s vs %s", folders, self.settings["num_folders"]
+                "[USER] files OK - %s vs %s", 
+                (
+                    files, 
+                    self.settings["num_files"],
+                )
             )
         else:
             self.log(
-                "[USER] folders not OK - %s vs %s", files, self.settings["num_files"]
+                "[USER] files not OK - %s vs %s", 
+                (
+                    files, 
+                    self.settings["num_files"],
+                )
+            )
+
+        if folders >= self.settings["num_folders"]:
+            self.log(
+                "[USER] folders OK - %s vs %s", 
+                (
+                    folders, 
+                    self.settings["num_folders"],
+                )
+            )
+        else:
+            self.log(
+                "[USER] folders not OK - %s vs %s", 
+                (
+                    files, 
+                    self.settings["num_files"],
+                )
             )
 
         if locked_percent >= self.settings["percent_threshold"]:
             self.log(
                 "[USER] percentage OK - %s vs %s",
-                locked_percent,
-                self.settings["percent_threshold"],
+                (
+                    locked_percent,
+                    self.settings["percent_threshold"],
+                )
             )
         else:
             self.log(
                 "[USER] percentage not OK - %s vs %s",
-                locked_percent,
-                self.settings["percent_threshold"],
+                (
+                    locked_percent,
+                    self.settings["percent_threshold"],
+                )
             )
 
         user_validated = (
