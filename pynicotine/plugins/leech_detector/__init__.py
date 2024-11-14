@@ -159,13 +159,11 @@ class Plugin(BasePlugin):
             if user in self.settings["detected_leechers"]:
                 # We already messaged the user in a previous session
                 return
-            if self.probed_downloaders.get(user) is None:
-                # user is not downloading, stop here
-                return
-            # user is a downloader, check him
-            self.check_downloader(
-                user, files, folders, locked_percent
-            )
+            if user in self.probed_downloaders:
+                # user is a downloader, check him
+                self.check_downloader(
+                    user, files, folders, locked_percent
+                )
 
     def check_downloader(self, user, files, folders, locked_percent):
 
