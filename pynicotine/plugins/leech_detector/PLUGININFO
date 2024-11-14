@@ -1,4 +1,4 @@
 Version = "0.3"
 Authors = ["tegitting"]
-Name = "Uncle Leech"
+Name = "[Uncle Leech]"
 Description = "Detects leechers.\n\nMessage placeholders:\n- %files% : number of required files\n- %folders% : number of required folders \n- %percent% : required minimum percent of locked folders"
