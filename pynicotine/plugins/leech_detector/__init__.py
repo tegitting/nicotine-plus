@@ -170,9 +170,9 @@ class Plugin(BasePlugin):
 
         # conditions to avoid detection
         user_validated = (
-            int(files) >= self.settings["num_files"]
-            and int(folders) >= self.settings["num_folders"]
-            and int(locked_percent) < self.settings["percent_threshold"]
+            files >= self.settings["num_files"]
+            and folders >= self.settings["num_folders"]
+            and locked_percent < self.settings["percent_threshold"]
         )
 
         # when the user meets criteria or is a buddy..
