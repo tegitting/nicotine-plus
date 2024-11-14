@@ -205,7 +205,7 @@ class Plugin(BasePlugin):
                 )
             )
 
-        if locked_percent >= self.settings["percent_threshold"]:
+        if locked_percent < self.settings["percent_threshold"]:
             self.log(
                 "[USER] percentage OK - %s vs %s",
                 (
