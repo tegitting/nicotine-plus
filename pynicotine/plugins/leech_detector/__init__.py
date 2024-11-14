@@ -137,12 +137,12 @@ class Plugin(BasePlugin):
             if stats.get("private_dirs"):
                 locked_percent = int(round((private_folders / total_folders) * 100))
             else:
-                locked_percent = 0
+                locked_percent = int(0)
             # clean share size
             if stats.get("shared_size") is not None:
                 share_total = int(stats.get("shared_size"))
             else:
-                share_total = 0
+                share_total = int(0)
 
             # display the users shares
             self.log(
@@ -170,6 +170,58 @@ class Plugin(BasePlugin):
     def check_downloader(self, user, files, folders, locked_percent):
 
         # conditions to avoid detection
+
+        if files >= self.settings["num_files"]:
+            self.log(
+                "[USER] files OK - %s vs %s", 
+                (
+                    files, 
+                    self.settings["num_files"],
+                )
+            )
+        else:
+            self.log(
+                "[USER] files not OK - %s vs %s", 
+                (
+                    files, 
+                    self.settings["num_files"],
+                )
+            )
+
+        if folders >= self.settings["num_folders"]:
+            self.log(
+                "[USER] folders OK - %s vs %s", 
+                (
+                    folders, 
+                    self.settings["num_folders"],
+                )
+            )
+        else:
+            self.log(
+                "[USER] folders not OK - %s vs %s", 
+                (
+                    files, 
+                    self.settings["num_files"],
+                )
+            )
+
+        if locked_percent < self.settings["percent_threshold"]:
+            self.log(
+                "[USER] percentage OK - %s vs %s",
+                (
+                    locked_percent,
+                    self.settings["percent_threshold"],
+                )
+            )
+        else:
+            self.log(
+                "[USER] percentage not OK - %s vs %s",
+                (
+                    locked_percent,
+                    self.settings["percent_threshold"],
+                )
+            )
+
         user_validated = (
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
