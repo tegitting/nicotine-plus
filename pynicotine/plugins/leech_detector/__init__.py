@@ -156,9 +156,7 @@ class Plugin(BasePlugin):
                     human_size(share_total),
                 ),
             )
-            if user in self.settings["detected_leechers"]:
-                # We already messaged the user in a previous session
-                return
+            
             if user in self.probed_downloaders:
                 # user is a downloader, check him
                 self.log("[USER] %s is a downloader - checking...", user)
