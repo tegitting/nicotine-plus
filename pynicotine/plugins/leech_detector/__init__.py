@@ -232,58 +232,55 @@ class Plugin(BasePlugin):
         ):
             # mark the user as OK
             self.probed_downloaders[user] = "OK"
+            # when the user meets criteria
+            if self.probed_downloaders[user] == "OK" or user in self.core.buddies.users:
+                # check if they exist in the leechers list
+                if user in self.settings["detected_leechers"]:
+                    # and remove them
+                    self.settings["detected_leechers"].remove(user)
 
-        # when the user meets criteria
-        if self.probed_downloaders[user] == "OK" or user in self.core.buddies.users:
-            # check if they exist in the leechers list
-            if user in self.settings["detected_leechers"]:
-                # and remove them
-                self.settings["detected_leechers"].remove(user)
-                # mark the user as OK
-                self.probed_users[user] = "okay"
-
-        # log progress
-        if user in self.core.buddies.users:
-            self.log("Buddy %s is OK.", user)
-            return
-        else:
-            self.log("User %s is OK.", user)
-            return
-
-        # if we got here, the user is a detected leecher - log progress
-        self.log("User %s is not sharing enough...", user)
-
-        # if messaging turned on
-        if self.settings["send_message"] is True:
-
-            # if no message is configured
-            if not self.settings["message"]:
-                # log it
-                self.log(
-                    "User %s is leeching, no message configured in plugin",
-                    user,
-                )
-
-            # else send the message
+                    # log progress
+                    if user in self.core.buddies.users:
+                        self.log("Buddy %s is OK.", user)
+                        return
+                    else:
+                        self.log("User %s is OK.", user)
+                        return
             else:
-                for line in self.settings["message"].splitlines():
-                    for placeholder, option_key in self.PLACEHOLDERS.items():
-                        # peplace message placeholders with actual values specified in the plugin settings
-                        line = line.replace(placeholder, str(self.settings[option_key]))
-                    self.send_private(
-                        user,
-                        line,
-                        show_ui=self.settings["open_private_chat"],
-                        switch_page=False,
-                    )
-                # log progress
-                self.log("User %s is leeching - a message was sent", user)
-
-        # add the user to the detected leecher list
-        if user not in self.settings["detected_leechers"]:
-            self.settings["detected_leechers"].append(user)
-
-        # if a ban is required
-        if self.settings["enable_ban"] is True:
-            self.core.network_filter.ban_user(user)
-            self.log("User %s has been banned.", user)
+                # if we got here, the user is a detected leecher - log progress
+                self.log("User %s is not sharing enough...", user)
+        
+                # if messaging turned on
+                if self.settings["send_message"] is True:
+        
+                    # if no message is configured
+                    if not self.settings["message"]:
+                        # log it
+                        self.log(
+                            "User %s is leeching, no message configured in plugin",
+                            user,
+                        )
+        
+                    # else send the message
+                    else:
+                        for line in self.settings["message"].splitlines():
+                            for placeholder, option_key in self.PLACEHOLDERS.items():
+                                # peplace message placeholders with actual values specified in the plugin settings
+                                line = line.replace(placeholder, str(self.settings[option_key]))
+                            self.send_private(
+                                user,
+                                line,
+                                show_ui=self.settings["open_private_chat"],
+                                switch_page=False,
+                            )
+                        # log progress
+                        self.log("User %s is leeching - a message was sent", user)
+        
+                # add the user to the detected leecher list
+                if user not in self.settings["detected_leechers"]:
+                    self.settings["detected_leechers"].append(user)
+        
+                # if a ban is required
+                if self.settings["enable_ban"] is True:
+                    self.core.network_filter.ban_user(user)
+                    self.log("User %s has been banned.", user)
