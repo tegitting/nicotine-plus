@@ -195,7 +195,7 @@ class Plugin(BasePlugin):
                 "User %s folders OK - has %s vs %s required", 
                 (
                     user,
-                    files, 
+                    folders, 
                     self.settings["num_folders"],
                 )
             )
@@ -204,7 +204,7 @@ class Plugin(BasePlugin):
                 "User %s failed folder check - has %s vs %s required", 
                 (
                     user,
-                    files, 
+                    folders, 
                     self.settings["num_folders"],
                 )
             )
@@ -214,7 +214,7 @@ class Plugin(BasePlugin):
                 "User %s percentage OK - has %s vs %s required ",
                 (
                     user,
-                    files, 
+                    locked_percent, 
                     self.settings["percent_threshold"],
                 )
             )
@@ -223,7 +223,7 @@ class Plugin(BasePlugin):
                 "User %s failed locked percentage check - %s vs %s",
                 (
                     user,
-                    files, 
+                    locked_percent, 
                     self.settings["percent_threshold"],
                 )
             )
@@ -235,7 +235,7 @@ class Plugin(BasePlugin):
             and locked_percent < self.settings["percent_threshold"]
         )
         # when the user meets criteria or is a buddy..
-        if user_validated or user in self.core.buddies.user:
+        if user_validated:
             # check if they exist in the leechers list
             if user in self.settings["detected_leechers"]:
                 # and remove them
