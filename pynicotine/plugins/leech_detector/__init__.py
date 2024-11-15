@@ -209,27 +209,26 @@ class Plugin(BasePlugin):
                 )
             )
 
+        if locked_percent <= self.settings["percent_threshold"]:
+            self.log(
+                "User %s percentage OK - has %s vs %s required ",
+                (
+                    user,
+                    locked_percent, 
+                    self.settings["percent_threshold"],
+                )
+            )
+        else:
+            self.log(
+                "User %s failed locked percentage check - %s vs %s",
+                (
+                    user,
+                    locked_percent, 
+                    self.settings["percent_threshold"],
+                )
+            )
         if locked_percent == 0:
             locked_percent = 1
-        else:
-            if locked_percent <= self.settings["percent_threshold"]:
-                self.log(
-                    "User %s percentage OK - has %s vs %s required ",
-                    (
-                        user,
-                        locked_percent, 
-                        self.settings["percent_threshold"],
-                    )
-                )
-            else:
-                self.log(
-                    "User %s failed locked percentage check - %s vs %s",
-                    (
-                        user,
-                        locked_percent, 
-                        self.settings["percent_threshold"],
-                    )
-                )
 
         # validation conditions
         user_validated = (
