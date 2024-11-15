@@ -111,7 +111,7 @@ class Plugin(BasePlugin):
             return
 
         # a user has requested an upload, log it.
-        self.log("[USER] %s requested an upload - asking user for shares...", user)
+        self.log("User %s requested an upload - asking user for shares...", user)
 
         # add the user to downloaders dict
         self.probed_downloaders[user] = "downloader"
@@ -146,7 +146,7 @@ class Plugin(BasePlugin):
 
             # display the users shares
             self.log(
-                "[USER] %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
+                "User %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
                 (
                     user,
                     files,
@@ -173,15 +173,16 @@ class Plugin(BasePlugin):
 
         if files >= self.settings["num_files"]:
             self.log(
-                "User files OK - %s vs %s", 
+                "User files OK - has %s vs %s required", 
                 (
+                    user,
                     files, 
                     self.settings["num_files"],
                 )
             )
         else:
             self.log(
-                "User files not OK - %s vs %s", 
+                "User failed file check - has %s vs %s required", 
                 (
                     files, 
                     self.settings["num_files"],
@@ -190,7 +191,7 @@ class Plugin(BasePlugin):
 
         if folders >= self.settings["num_folders"]:
             self.log(
-                "User folders OK - %s vs %s", 
+                "User folders OK - has %s vs %s required", 
                 (
                     folders, 
                     self.settings["num_folders"],
@@ -198,7 +199,7 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "User folders not OK - %s vs %s", 
+                "User failed folder check - has %s vs %s required", 
                 (
                     files, 
                     self.settings["num_files"],
@@ -207,7 +208,7 @@ class Plugin(BasePlugin):
 
         if locked_percent < self.settings["percent_threshold"]:
             self.log(
-                "User percentage OK - %s vs %s",
+                "User percentage OK - has %s vs %s required ",
                 (
                     locked_percent,
                     self.settings["percent_threshold"],
@@ -215,19 +216,19 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "User locked percentage not OK - %s vs %s",
+                "User failed locked percentage check - %s vs %s",
                 (
                     locked_percent,
                     self.settings["percent_threshold"],
                 )
             )
 
+        # validation conditions
         user_validated = (
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
             and locked_percent < self.settings["percent_threshold"]
         )
-
         # when the user meets criteria or is a buddy..
         if user_validated or user in self.core.buddies.users:
             # check if they exist in the leechers list
@@ -237,12 +238,14 @@ class Plugin(BasePlugin):
                 # mark the user as OK
                 self.probed_users[user] = "okay"
 
-                # log progress
-                if user_validated:
-                    self.log("User %s is OK.", user)
-                else:
-                    self.log("Buddy %s is OK.", user)
-                return
+        # log progress
+        if user_validated:
+            self.log("User %s is OK.", user)
+            return
+        else:
+            self.log("Buddy %s is OK.", user)
+            return
+
 
         # if we got here, the user is a detected leecher - log progress
         self.log("User %s is not sharing enough...", user)
