@@ -99,14 +99,7 @@ class Plugin(BasePlugin):
         if self.settings["percent_threshold"] < percent_allowed:
             self.settings["percent_threshold"] = percent_allowed
 
-        self.log(
-            "Users need %d files in %d folders with less than % percent private.",
-            (
-                self.settings["num_files"],
-                self.settings["num_folders"],
-                self.settings["percent_threshold"],
-            ),
-        )
+        self.log("Plugin loaded...")
 
     def upload_queued_notification(self, user, virtual_path, real_path):
 
