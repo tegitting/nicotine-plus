@@ -173,7 +173,7 @@ class Plugin(BasePlugin):
 
         if files >= self.settings["num_files"]:
             self.log(
-                "User files OK - has %s vs %s required", 
+                "User %s files OK - has %s vs %s required", 
                 (
                     user,
                     files, 
@@ -182,8 +182,9 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "User failed file check - has %s vs %s required", 
+                "User %s failed file check - has %s vs %s required", 
                 (
+                    user,
                     files, 
                     self.settings["num_files"],
                 )
@@ -191,34 +192,38 @@ class Plugin(BasePlugin):
 
         if folders >= self.settings["num_folders"]:
             self.log(
-                "User folders OK - has %s vs %s required", 
+                "User %s folders OK - has %s vs %s required", 
                 (
-                    folders, 
+                    user,
+                    files, 
                     self.settings["num_folders"],
                 )
             )
         else:
             self.log(
-                "User failed folder check - has %s vs %s required", 
+                "User %s failed folder check - has %s vs %s required", 
                 (
+                    user,
                     files, 
-                    self.settings["num_files"],
+                    self.settings["num_folders"],
                 )
             )
 
         if locked_percent < self.settings["percent_threshold"]:
             self.log(
-                "User percentage OK - has %s vs %s required ",
+                "User %s percentage OK - has %s vs %s required ",
                 (
-                    locked_percent,
+                    user,
+                    files, 
                     self.settings["percent_threshold"],
                 )
             )
         else:
             self.log(
-                "User failed locked percentage check - %s vs %s",
+                "User %s failed locked percentage check - %s vs %s",
                 (
-                    locked_percent,
+                    user,
+                    files, 
                     self.settings["percent_threshold"],
                 )
             )
@@ -230,7 +235,7 @@ class Plugin(BasePlugin):
             and locked_percent < self.settings["percent_threshold"]
         )
         # when the user meets criteria or is a buddy..
-        if user_validated or user in self.core.buddies.users:
+        if user_validated or user in self.core.buddies.user:
             # check if they exist in the leechers list
             if user in self.settings["detected_leechers"]:
                 # and remove them
@@ -239,13 +244,12 @@ class Plugin(BasePlugin):
                 self.probed_users[user] = "okay"
 
         # log progress
-        if user_validated:
-            self.log("User %s is OK.", user)
-            return
-        else:
+        if user in self.core.buddies.users:
             self.log("Buddy %s is OK.", user)
             return
-
+        else:
+            self.log("User %s is OK.", user)
+            return
 
         # if we got here, the user is a detected leecher - log progress
         self.log("User %s is not sharing enough...", user)
