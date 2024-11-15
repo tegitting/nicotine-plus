@@ -73,7 +73,7 @@ class Plugin(BasePlugin):
             "percent_threshold": {
                 "description": "Maximum percentage of locked/private folders allowed:",
                 "type": "int",
-                "minimum": 1,
+                "minimum": 2,
                 "maximum": 99,
             },
             "detected_leechers": {
@@ -100,13 +100,17 @@ class Plugin(BasePlugin):
             self.settings["percent_threshold"] = percent_allowed
 
         self.log(
-            "Require users have a minimum of %d files in %d shared public folders.",
-            (self.settings["num_files"], self.settings["num_folders"]),
+            "Users need %d files in %d folders with less than % percent private.",
+            (
+                self.settings["num_files"],
+                self.settings["num_folders"],
+                self.settings["percent_threshold"],
+            ),
         )
 
     def upload_queued_notification(self, user, virtual_path, real_path):
 
-        # already know the user is a downloader - ignore
+        # already dealt with
         if user in self.probed_downloaders:
             return
 
@@ -138,6 +142,8 @@ class Plugin(BasePlugin):
                 locked_percent = int(round((private_folders / total_folders) * 100))
             else:
                 locked_percent = int(0)
+            if locked_percent == 0:
+                locked_percent = 1
             # clean share size
             if stats.get("shared_size") is not None:
                 share_total = int(stats.get("shared_size"))
@@ -160,83 +166,82 @@ class Plugin(BasePlugin):
             if user in self.probed_downloaders:
                 # user is a downloader, check him
                 self.log(
-                    "User %s is a downloader - checking...", 
-                    (
-                        user,
-                    ),
+                    "User %s is a downloader - checking...",
+                    (user,),
                 )
                 self.check_downloader(user, files, folders, locked_percent)
 
     def check_downloader(self, user, files, folders, locked_percent):
 
         # conditions to avoid detection
-
         if files >= self.settings["num_files"]:
             self.log(
-                "User %s files OK - has %s vs %s required", 
+                "User %s files OK - has %s vs %s required",
                 (
                     user,
-                    files, 
+                    files,
                     self.settings["num_files"],
-                )
+                ),
             )
         else:
             self.log(
-                "User %s failed file check - has %s vs %s required", 
+                "User %s failed file check - has %s vs %s required",
                 (
                     user,
-                    files, 
+                    files,
                     self.settings["num_files"],
-                )
+                ),
             )
 
         if folders >= self.settings["num_folders"]:
             self.log(
-                "User %s folders OK - has %s vs %s required", 
+                "User %s folders OK - has %s vs %s required",
                 (
                     user,
-                    folders, 
+                    folders,
                     self.settings["num_folders"],
-                )
+                ),
             )
         else:
             self.log(
-                "User %s failed folder check - has %s vs %s required", 
+                "User %s failed folder check - has %s vs %s required",
                 (
                     user,
-                    folders, 
+                    folders,
                     self.settings["num_folders"],
-                )
+                ),
             )
-        if locked_percent == 0:
-            locked_percent = 1
+
         if locked_percent <= self.settings["percent_threshold"]:
             self.log(
                 "User %s percentage OK - has %s vs %s required ",
                 (
                     user,
-                    locked_percent, 
+                    locked_percent,
                     self.settings["percent_threshold"],
-                )
+                ),
             )
         else:
             self.log(
                 "User %s failed locked percentage check - %s vs %s",
                 (
                     user,
-                    locked_percent, 
+                    locked_percent,
                     self.settings["percent_threshold"],
-                )
+                ),
             )
 
         # validation conditions
-        user_validated = (
+        if (
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
             and locked_percent < self.settings["percent_threshold"]
-        )
-        # when the user meets criteria or is a buddy..
-        if user_validated:
+        ):
+            # mark the user as OK
+            self.probed_downloaders[user] = "OK"
+
+        # when the user meets criteria
+        if self.probed_downloaders[user] == "OK" or user in self.core.buddies.users:
             # check if they exist in the leechers list
             if user in self.settings["detected_leechers"]:
                 # and remove them
