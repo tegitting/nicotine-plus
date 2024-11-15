@@ -208,7 +208,8 @@ class Plugin(BasePlugin):
                     self.settings["num_folders"],
                 )
             )
-
+        if locked_percent == 0:
+            locked_percent = 1
         if locked_percent <= self.settings["percent_threshold"]:
             self.log(
                 "User %s percentage OK - has %s vs %s required ",
@@ -227,8 +228,6 @@ class Plugin(BasePlugin):
                     self.settings["percent_threshold"],
                 )
             )
-        if locked_percent == 0:
-            locked_percent = 1
 
         # validation conditions
         user_validated = (
