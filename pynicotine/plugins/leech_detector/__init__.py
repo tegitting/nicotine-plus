@@ -107,7 +107,7 @@ class Plugin(BasePlugin):
             total_folders = folders + private_folders
             # catch division by zero error and only divide when total_folders is not 0
             if total_folders != 0:
-                locked_percent = self.calculate_percentage(private_folders, total_folders) 
+                locked_percent = self.calculate_percentage(private_folders, int(total_folders)) 
             else:
                 locked_percent = 0
 
