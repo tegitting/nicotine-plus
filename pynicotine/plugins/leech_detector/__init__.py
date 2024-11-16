@@ -185,31 +185,33 @@ class Plugin(BasePlugin):
             # the user is a detected leecher - log progress
             self.log("User %s is not sharing enough...", user)
 
-                # if messaging turned on
-                if self.settings["send_message"] is True:
-        
-                    # if no message is configured
-                    if not self.settings["message"]:
-                        # log it
-                        self.log(
-                            "User %s is leeching, no message configured in plugin",
-                            user,
-                        )
-        
-                    # else send the message
-                    else:
-                        for line in self.settings["message"].splitlines():
-                            for placeholder, option_key in self.PLACEHOLDERS.items():
-                                # peplace message placeholders with actual values specified in the plugin settings
-                                line = line.replace(placeholder, str(self.settings[option_key]))
-                            self.send_private(
-                                user,
-                                line,
-                                show_ui=self.settings["open_private_chat"],
-                                switch_page=False,
+            # if messaging turned on
+            if self.settings["send_message"] == True:
+
+                # if no message is configured
+                if not self.settings["message"]:
+                    # log it
+                    self.log(
+                        "User %s is leeching, no message configured in plugin",
+                        user,
+                    )
+
+                # else send the message
+                else:
+                    for line in self.settings["message"].splitlines():
+                        for placeholder, option_key in self.PLACEHOLDERS.items():
+                            # peplace message placeholders with actual values specified in the plugin settings
+                            line = line.replace(
+                                placeholder, str(self.settings[option_key])
                             )
-                        # log progress
-                        self.log("User %s is leeching - a message was sent", user)
+                        self.send_private(
+                            user,
+                            line,
+                            show_ui=self.settings["open_private_chat"],
+                            switch_page=False,
+                        )
+                    # log progress
+                    self.log("User %s is leeching - a message was sent", user)
 
             # add the user to the detected leecher list
             if user not in self.settings["detected_leechers"]:
