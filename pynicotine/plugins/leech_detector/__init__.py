@@ -76,6 +76,11 @@ class Plugin(BasePlugin):
         if self.settings["percent_threshold"] < percent_allowed:
             self.settings["percent_threshold"] = percent_allowed
 
+    # function to calculate percentage 
+    def calculate_percentage(part, whole):
+        percent = (part / whole) * 100
+        return round(percent)
+
     # an upload has been requested
     def upload_queued_notification(self, user, virtual_path, real_path):
         # user already dealt with
@@ -102,7 +107,7 @@ class Plugin(BasePlugin):
             total_folders = folders + private_folders
             # catch division by zero error and only divide when total_folders is not 0
             if total_folders != 0:
-                locked_percent = int(round((private_folders / total_folders) * 100))
+                locked_percent = self.calculate_percentage(private_folders, total_folders) 
             else:
                 locked_percent = 0
 
