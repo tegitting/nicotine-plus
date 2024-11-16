@@ -1,22 +1,3 @@
-# COPYRIGHT (C) 2020-2024 Nicotine+ Contributors
-# COPYRIGHT (C) 2011 quinox <quinox@users.sf.net>
-#
-# GNU GENERAL PUBLIC LICENSE
-#    Version 3, 29 June 2007
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
 from pynicotine.utils import human_speed
@@ -85,65 +66,47 @@ class Plugin(BasePlugin):
         self.probed_downloaders = {}
 
     def loaded_notification(self):
-
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
-
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
-
         if self.settings["num_folders"] < min_num_folders:
             self.settings["num_folders"] = min_num_folders
-
         if self.settings["percent_threshold"] < percent_allowed:
             self.settings["percent_threshold"] = percent_allowed
 
-        self.log("Plugin loaded...")
-
+    # an upload has been requested
     def upload_queued_notification(self, user, virtual_path, real_path):
-
-        # already dealt with
+        # user already dealt with
         if user in self.probed_downloaders:
             return
-
-        # a user has requested an upload, log it.
-        self.log("User %s requested an upload - asking user for shares...", user)
-
-        # add the user to downloaders dict
+        # record the user as a downloader
         self.probed_downloaders[user] = "downloader"
-
+        # a user has requested an upload, log it.
+        self.log("User %s requested an upload - browsing users shares...", user)
         # browse user to invoke a user_stats_notification
         self.core.userbrowse.browse_user(user)
 
+    # receive stats for a user
     def user_stats_notification(self, user, stats):
-
-        # only process if private_dirs in stats
+        # only process the notification if private_dirs in stats
         # we only get this in our customised userbrowse
-
         if stats.get("private_dirs") is not None:
-            # add user to probed_users dict with a value
-            self.probed_users[user] = "processing_stats"
-            # convert stats to parameters
+            # create dictionary entry
+            self.probed_users[user] = "processing"
             files = int(stats.get("files"))
             folders = int(stats.get("dirs"))
             private_folders = int(stats.get("private_dirs"))
-            # count all folders
+            total_shared = int(stats.get("shared_size"))
             total_folders = folders + private_folders
-            # calculate locked percentage
-            if stats.get("private_dirs"):
+            # catch division by zero error and only divide when total_folders is not 0
+            if total_folders != 0:
                 locked_percent = int(round((private_folders / total_folders) * 100))
             else:
-                locked_percent = int(0)
-            if locked_percent == 0:
-                locked_percent = 1
-            # clean share size
-            if stats.get("shared_size") is not None:
-                share_total = int(stats.get("shared_size"))
-            else:
-                share_total = int(0)
+                locked_percent = 0
 
-            # display the users shares
+            # display the users shares / log progress
             self.log(
                 "User %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
                 (
@@ -152,31 +115,20 @@ class Plugin(BasePlugin):
                     folders,
                     private_folders,
                     locked_percent,
-                    human_size(share_total),
+                    human_size(total_shared),
                 ),
             )
 
+            # since user is downloader, check stats
             if user in self.probed_downloaders:
                 # user is a downloader, check him
-                self.log(
-                    "User %s is a downloader - checking...",
-                    (user,),
-                )
-                self.check_downloader(user, files, folders, locked_percent)
+                self.log("User %s is a downloader. Checking stats...", user)
+                self.check_downloader(user, files, folders, int(locked_percent))
 
     def check_downloader(self, user, files, folders, locked_percent):
 
         # conditions to avoid detection
-        if files >= self.settings["num_files"]:
-            self.log(
-                "User %s files OK - has %s vs %s required",
-                (
-                    user,
-                    files,
-                    self.settings["num_files"],
-                ),
-            )
-        else:
+        if files < self.settings["num_files"]:
             self.log(
                 "User %s failed file check - has %s vs %s required",
                 (
@@ -186,16 +138,7 @@ class Plugin(BasePlugin):
                 ),
             )
 
-        if folders >= self.settings["num_folders"]:
-            self.log(
-                "User %s folders OK - has %s vs %s required",
-                (
-                    user,
-                    folders,
-                    self.settings["num_folders"],
-                ),
-            )
-        else:
+        if folders < self.settings["num_folders"]:
             self.log(
                 "User %s failed folder check - has %s vs %s required",
                 (
@@ -205,16 +148,7 @@ class Plugin(BasePlugin):
                 ),
             )
 
-        if locked_percent <= self.settings["percent_threshold"]:
-            self.log(
-                "User %s percentage OK - has %s vs %s required ",
-                (
-                    user,
-                    locked_percent,
-                    self.settings["percent_threshold"],
-                ),
-            )
-        else:
+        if locked_percent > self.settings["percent_threshold"]:
             self.log(
                 "User %s failed locked percentage check - %s vs %s",
                 (
@@ -224,7 +158,7 @@ class Plugin(BasePlugin):
                 ),
             )
 
-        # validation conditions
+        # if stats are good
         if (
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
@@ -232,24 +166,25 @@ class Plugin(BasePlugin):
         ):
             # mark the user as OK
             self.probed_downloaders[user] = "OK"
-            # when the user meets criteria
-            if self.probed_downloaders[user] == "OK" or user in self.core.buddies.users:
-                # check if they exist in the leechers list
-                if user in self.settings["detected_leechers"]:
-                    # and remove them
-                    self.settings["detected_leechers"].remove(user)
 
-                    # log progress
-                    if user in self.core.buddies.users:
-                        self.log("Buddy %s is OK.", user)
-                        return
-                    else:
-                        self.log("User %s is OK.", user)
-                        return
+            # if they exist in the leechers list
+            if user in self.settings["detected_leechers"]:
+                # and remove them
+                self.settings["detected_leechers"].remove(user)
+
+            # log progress
+            if user in self.core.buddies.users:
+                self.log("Buddy %s is OK.", user)
+                return
             else:
-                # if we got here, the user is a detected leecher - log progress
-                self.log("User %s is not sharing enough...", user)
-        
+                self.log("User %s is OK.", user)
+                return
+
+        # stats are not good
+        else:
+            # the user is a detected leecher - log progress
+            self.log("User %s is not sharing enough...", user)
+
                 # if messaging turned on
                 if self.settings["send_message"] is True:
         
@@ -275,12 +210,13 @@ class Plugin(BasePlugin):
                             )
                         # log progress
                         self.log("User %s is leeching - a message was sent", user)
-        
-                # add the user to the detected leecher list
-                if user not in self.settings["detected_leechers"]:
-                    self.settings["detected_leechers"].append(user)
-        
-                # if a ban is required
-                if self.settings["enable_ban"] is True:
-                    self.core.network_filter.ban_user(user)
-                    self.log("User %s has been banned.", user)
+
+    def ban_leech(self, user):
+        # add the user to the detected leecher list
+        if user not in self.settings["detected_leechers"]:
+            self.settings["detected_leechers"].append(user)
+        # if a ban is required
+        if self.settings["enable_ban"] is True:
+            self.core.network_filter.ban_user(user)
+            self.log("User %s has been banned", user)
+                self.log("User %s has been banned.", user)
