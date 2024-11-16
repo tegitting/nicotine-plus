@@ -77,7 +77,7 @@ class Plugin(BasePlugin):
             self.settings["percent_threshold"] = percent_allowed
 
     # function to calculate percentage 
-    def calculate_percentage(part, whole):
+    def calculate_percentage(self, part, whole):
         percent = (part / whole) * 100
         return round(percent)
 
