@@ -133,7 +133,7 @@ class Plugin(BasePlugin):
     def check_downloader(self, user, files, folders, locked_percent):
 
         # conditions to avoid detection
-        if files < self.settings["num_files"]:
+        if files <= self.settings["num_files"]:
             self.log(
                 "User %s failed file check - has %s vs %s required",
                 (
@@ -143,7 +143,7 @@ class Plugin(BasePlugin):
                 ),
             )
 
-        if folders < self.settings["num_folders"]:
+        if folders <= self.settings["num_folders"]:
             self.log(
                 "User %s failed folder check - has %s vs %s required",
                 (
