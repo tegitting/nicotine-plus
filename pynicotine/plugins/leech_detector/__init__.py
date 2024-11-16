@@ -143,6 +143,15 @@ class Plugin(BasePlugin):
                     self.settings["num_files"],
                 ),
             )
+        else:
+            self.log(
+                "User %s passed file check - has %s vs %s required",
+                (
+                    user,
+                    files,
+                    self.settings["num_files"],
+                ),
+            )
 
         if folders <= self.settings["num_folders"]:
             self.log(
@@ -153,10 +162,28 @@ class Plugin(BasePlugin):
                     self.settings["num_folders"],
                 ),
             )
+        else:
+            self.log(
+                "User %s passed folder check - has %s vs %s required",
+                (
+                    user,
+                    folders,
+                    self.settings["num_folders"],
+                ),
+            )
 
         if locked_percent > self.settings["percent_threshold"]:
             self.log(
                 "User %s failed locked percentage check - %s vs %s",
+                (
+                    user,
+                    locked_percent,
+                    self.settings["percent_threshold"],
+                ),
+            )
+        else:
+            self.log(
+                "User %s passed percentage check - %s vs %s",
                 (
                     user,
                     locked_percent,
