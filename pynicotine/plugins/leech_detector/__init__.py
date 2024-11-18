@@ -228,9 +228,8 @@ class Plugin(BasePlugin):
             if user in self.core.buddies.users:
                 self.log("Buddy %s is OK.", user)
                 return
-            else:
-                self.log("User %s is OK.", user)
-                return
+            self.log("User %s is OK.", user)
+            return
 
         # stats are not good
         else:
