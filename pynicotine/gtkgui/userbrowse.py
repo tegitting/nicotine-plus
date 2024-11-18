@@ -478,7 +478,14 @@ class UserBrowse:
         if browsed_user.private_folders:
             self.create_folder_tree(browsed_user.private_folders, private=True)
 
-        self.num_folders_label.set_text(humanize(browsed_user.num_folders))
+        # add extra info concernng shares
+        folders_string = (
+            "Private: "
+            + humanize(browsed_user.num_private_folders)
+            + " / Open: "
+            + humanize(browsed_user.num_folders)
+        )
+        self.num_folders_label.set_text(folders_string)
         self.share_size_label.set_text(human_size(browsed_user.shared_size))
 
         if self.expand_button.get_active():
