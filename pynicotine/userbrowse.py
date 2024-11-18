@@ -44,6 +44,7 @@ class BrowsedUser:
         self.public_folders = {}
         self.private_folders = {}
         self.num_folders = None
+        self.num_private_folders = 0
         self.num_files = None
         self.shared_size = None
 
