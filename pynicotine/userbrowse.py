@@ -391,6 +391,8 @@ class UserBrowse:
             browsed_user.public_folders = dict(msg.list)
             browsed_user.private_folders = dict(msg.privatelist)
             browsed_user.num_folders = num_folders
+            # for displaying in the num folders gui
+            browsed_user.num_private_folders = private_folders
             browsed_user.num_files = num_files
             browsed_user.shared_size = shared_size
 
