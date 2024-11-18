@@ -479,11 +479,14 @@ class UserBrowse:
             self.create_folder_tree(browsed_user.private_folders, private=True)
 
         # add extra info concernng shares
+        percents = round((browsed_user.num_private_folders / browsed_user.num_folders) * 100)
         folders_string = (
             "Private: "
             + humanize(browsed_user.num_private_folders)
-            + " / Open: "
+            + " / Total: "
             + humanize(browsed_user.num_folders)
+            + " / Percent: "
+            
         )
         self.num_folders_label.set_text(folders_string)
         self.share_size_label.set_text(human_size(browsed_user.shared_size))
