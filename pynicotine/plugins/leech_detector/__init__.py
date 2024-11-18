@@ -238,7 +238,7 @@ class Plugin(BasePlugin):
             self.log("User %s is not sharing enough...", user)
 
             # if messaging turned on
-            if self.settings["send_message"] == True:
+            if self.settings["send_message"] is True:
 
                 # if no message is configured
                 if not self.settings["message"]:
