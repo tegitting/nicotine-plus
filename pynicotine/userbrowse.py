@@ -35,7 +35,7 @@ from pynicotine.utils import encode_path
 
 
 class BrowsedUser:
-    __slots__ = ("username", "public_folders", "private_folders", "num_folders", "num_private_folders", "num_files",
+    __slots__ = ("username", "public_folders", "private_folders", "num_folders", "num_files",
                  "shared_size")
 
     def __init__(self, username):
@@ -44,7 +44,6 @@ class BrowsedUser:
         self.public_folders = {}
         self.private_folders = {}
         self.num_folders = None
-        self.num_private_folders = 0
         self.num_files = None
         self.shared_size = None
 
@@ -392,8 +391,6 @@ class UserBrowse:
             browsed_user.public_folders = dict(msg.list)
             browsed_user.private_folders = dict(msg.privatelist)
             browsed_user.num_folders = num_folders
-            # for displaying in the num folders gui
-            browsed_user.num_private_folders = private_folders
             browsed_user.num_files = num_files
             browsed_user.shared_size = shared_size
 
