@@ -143,6 +143,10 @@ class Plugin(BasePlugin):
                     human_size(total_shared),
                 ),
             )
+            if files is not None and folders == private_folders:
+                ban_reason = "[AUTO-MESSAGE] You tried to download from me but all your files are private. Because of this you are banned."
+                self.ban_with_reason(user, ban_reason)
+                return  
 
             # since user is downloader, check stats
             if user in self.probed_downloaders:
