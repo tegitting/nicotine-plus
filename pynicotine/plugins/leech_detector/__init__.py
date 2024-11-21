@@ -20,6 +20,7 @@ from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
 from pynicotine.utils import human_speed
 
+
 class Plugin(BasePlugin):
 
     PLACEHOLDERS = {"%files%": "num_files", "%folders%": "num_folders"}
@@ -165,7 +166,9 @@ class Plugin(BasePlugin):
         )
         self.log("User %s has been banned and a message was sent.", user)
 
-    def check_downloader(self, user, files, folders, private_folders, locked_percent, total_shared):
+    def check_downloader(
+        self, user, files, folders, private_folders, locked_percent, total_shared
+    ):
 
         # log progress START
         if files <= self.settings["num_files"]:
@@ -251,19 +254,19 @@ class Plugin(BasePlugin):
         else:
             # the user is a detected leecher - log progress
             self.log("User %s is not sharing enough...", user)
-            
+
             if files > 0 and folders == private_folders:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private. 
 Because of this you are banned."""
                 self.ban_with_reason(user, ban_reason)
                 return
-                
+
             if files == 0 and folders == 0:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. 
 https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
                 self.ban_with_reason(user, ban_reason)
                 return
-                
+
             if files == 0 and folders == 1:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. 
 You know how to add shared folders but chose to share one with 0 files. Now you are banned."""
