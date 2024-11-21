@@ -16,11 +16,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
 from pynicotine.utils import human_speed
-
 
 class Plugin(BasePlugin):
 
@@ -148,12 +146,14 @@ class Plugin(BasePlugin):
             if user in self.probed_downloaders:
                 # user is a downloader, check him
                 self.log("User %s is a downloader. Checking stats...", user)
-                if files is not None and folders == private_folders:
-                    ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private. 
-                    Because of this you are banned."""
-                    self.ban_with_reason(user, ban_reason)
-                    return
-                self.check_downloader(user, files, folders, int(locked_percent))
+                self.check_downloader(
+                    user, 
+                    files, 
+                    folders, 
+                    private_folders, 
+                    int(locked_percent), 
+                    total_shared
+                )
 
     def ban_with_reason(self, user, reason):
         self.core.network_filter.ban_user(user)
@@ -165,7 +165,7 @@ class Plugin(BasePlugin):
         )
         self.log("User %s has been banned and a message was sent.", user)
 
-    def check_downloader(self, user, files, folders, locked_percent):
+    def check_downloader(self, user, files, folders, private_folders, locked_percent, total_shared):
 
         # log progress START
         if files <= self.settings["num_files"]:
@@ -251,13 +251,20 @@ class Plugin(BasePlugin):
         else:
             # the user is a detected leecher - log progress
             self.log("User %s is not sharing enough...", user)
-
-            if files is None and folders is None:
+            
+            if files > 0 and folders == private_folders:
+                ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private. 
+                Because of this you are banned."""
+                self.ban_with_reason(user, ban_reason)
+                return
+                
+            if files == 0 and folders == 0:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. 
                 https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
                 self.ban_with_reason(user, ban_reason)
                 return
-            if files is None and folders == 1:
+                
+            if files == 0 and folders == 1:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. 
                 You know how to add shared folders but chose to share one with 0 files. Now you are banned."""
                 self.ban_with_reason(user, ban_reason)
