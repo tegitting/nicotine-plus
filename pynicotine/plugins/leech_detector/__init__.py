@@ -144,7 +144,8 @@ class Plugin(BasePlugin):
                 ),
             )
             if files is not None and folders == private_folders:
-                ban_reason = "[AUTO-MESSAGE] You tried to download from me but all your files are private. Because of this you are banned."
+                ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private. 
+                Because of this you are banned."""
                 self.ban_with_reason(user, ban_reason)
                 return  
 
@@ -252,11 +253,13 @@ class Plugin(BasePlugin):
             self.log("User %s is not sharing enough...", user)
 
             if files is None and folders is None:
-                ban_reason = "[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"
+                ban_reason = """[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. 
+                https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
                 self.ban_with_reason(user, ban_reason)
                 return
             if files is None and folders == 1:
-                ban_reason = "[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. You know how to add shared folders but chose to share one with 0 files. Now you are banned."
+                ban_reason = """[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. 
+                You know how to add shared folders but chose to share one with 0 files. Now you are banned."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
