@@ -147,12 +147,12 @@ class Plugin(BasePlugin):
                 # user is a downloader, check him
                 self.log("User %s is a downloader. Checking stats...", user)
                 self.check_downloader(
-                    user, 
-                    files, 
-                    folders, 
-                    private_folders, 
-                    int(locked_percent), 
-                    total_shared
+                    user,
+                    files,
+                    folders,
+                    private_folders,
+                    int(locked_percent),
+                    total_shared,
                 )
 
     def ban_with_reason(self, user, reason):
@@ -254,19 +254,19 @@ class Plugin(BasePlugin):
             
             if files > 0 and folders == private_folders:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private. 
-                Because of this you are banned."""
+Because of this you are banned."""
                 self.ban_with_reason(user, ban_reason)
                 return
                 
             if files == 0 and folders == 0:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. 
-                https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
+https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
                 self.ban_with_reason(user, ban_reason)
                 return
                 
             if files == 0 and folders == 1:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. 
-                You know how to add shared folders but chose to share one with 0 files. Now you are banned."""
+You know how to add shared folders but chose to share one with 0 files. Now you are banned."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
