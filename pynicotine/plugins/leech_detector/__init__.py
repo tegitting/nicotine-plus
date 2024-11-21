@@ -150,9 +150,19 @@ class Plugin(BasePlugin):
                 self.log("User %s is a downloader. Checking stats...", user)
                 self.check_downloader(user, files, folders, int(locked_percent))
 
+    def ban_with_reason(self, user, reason):
+        self.core.network_filter.ban_user(user)
+        self.send_private(
+            user,
+            reason,
+            show_ui=self.settings["open_private_chat"],
+            switch_page=False,
+        )
+        self.log("User %s has been banned and a message was sent.", user)
+
     def check_downloader(self, user, files, folders, locked_percent):
 
-        # conditions to avoid detection
+        # log progress START
         if files <= self.settings["num_files"]:
             self.log(
                 "User %s failed file check - has %s vs %s required",
@@ -209,6 +219,7 @@ class Plugin(BasePlugin):
                     self.settings["percent_threshold"],
                 ),
             )
+            # log progress END
 
         # if stats are good
         if (
@@ -235,6 +246,15 @@ class Plugin(BasePlugin):
         else:
             # the user is a detected leecher - log progress
             self.log("User %s is not sharing enough...", user)
+
+            if files is None and folders is None:
+                ban_reason = "[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"
+                self.ban_with_reason(user, ban_reason)
+                return
+            if files is None and folders == 1:
+                ban_reason = "[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. You know how to add shared folders but chose to share one with 0 files. Now you are banned."
+                self.ban_with_reason(user, ban_reason)
+                return
 
             # if messaging turned on
             if self.settings["send_message"] is True:
