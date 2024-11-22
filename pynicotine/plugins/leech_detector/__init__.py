@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
 from pynicotine.utils import human_speed
@@ -41,7 +42,7 @@ class Plugin(BasePlugin):
         }
         self.metasettings = {
             "enable_ban": {
-                "description": "Ban detected leechers",
+                "description": "Apply a ban to detected leechers",
                 "type": "bool",
             },
             "send_message": {
@@ -62,7 +63,7 @@ class Plugin(BasePlugin):
             "num_files": {
                 "description": "Require users to have a minimum number of shared files:",
                 "type": "int",
-                "minimum": 0,
+                "minimum": 1,
             },
             "num_folders": {
                 "description": "Require users to have a minimum number of shared folders:",
@@ -72,7 +73,7 @@ class Plugin(BasePlugin):
             "percent_threshold": {
                 "description": "Maximum percentage of locked/private folders allowed:",
                 "type": "int",
-                "minimum": 2,
+                "minimum": 1,
                 "maximum": 99,
             },
             "detected_leechers": {
@@ -97,7 +98,7 @@ class Plugin(BasePlugin):
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
         percent = (part / whole) * 100
-        return round(percent)
+        return percent
 
     # an upload has been requested
     def upload_queued_notification(self, user, virtual_path, real_path):
@@ -114,7 +115,7 @@ class Plugin(BasePlugin):
     # receive stats for a user
     def user_stats_notification(self, user, stats):
         # only process the notification if private_dirs in stats
-        # we only get this in our customised userbrowse
+        # we only get this in our customised userbrowse function
         if stats.get("private_dirs") is not None:
             # create dictionary entry
             self.probed_users[user] = "processing"
@@ -123,7 +124,8 @@ class Plugin(BasePlugin):
             private_folders = int(stats.get("private_dirs"))
             total_shared = int(stats.get("shared_size"))
             total_folders = folders + private_folders
-            # catch division by zero error and only divide when total_folders is not 0
+            
+            # prevent a division by zero error
             if total_folders != 0:
                 # locked_percent = self.calculate_percentage(private_folders, int(total_folders))
                 locked_percent = round((private_folders / total_folders) * 100)
@@ -143,10 +145,11 @@ class Plugin(BasePlugin):
                 ),
             )
 
-            # since user is downloader, check stats
+            # if the user is a downloader
             if user in self.probed_downloaders:
-                # user is a downloader, check him
+                # log progress
                 self.log("User %s is a downloader. Checking stats...", user)
+                # perform some analysis on the stats
                 self.check_downloader(
                     user,
                     files,
@@ -170,7 +173,7 @@ class Plugin(BasePlugin):
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
 
-        # log progress START
+        # log progress
         if files <= self.settings["num_files"]:
             self.log(
                 "User %s failed file check - has %s vs %s required",
@@ -255,21 +258,23 @@ class Plugin(BasePlugin):
             # the user is a detected leecher - log progress
             self.log("User %s is not sharing enough...", user)
 
+            # user has files but all folders are locked/private
             if files > 0 and folders == private_folders:
-                ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private. 
-Because of this you are banned."""
+                ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
+            # user is not sharing - send the wikihow link
             if files == 0 and folders == 0:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. 
 https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
                 self.ban_with_reason(user, ban_reason)
                 return
 
+            # user trying to evade detection by regular slsk client
             if files == 0 and folders == 1:
                 ban_reason = """[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. 
-You know how to add shared folders but chose to share one with 0 files. Now you are banned."""
+You know how to add shared folders but chose to share one with 0 files."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
@@ -304,6 +309,7 @@ You know how to add shared folders but chose to share one with 0 files. Now you 
             # add the user to the detected leecher list
             if user not in self.settings["detected_leechers"]:
                 self.settings["detected_leechers"].append(user)
+                
             # if a ban is required
             if self.settings["enable_ban"] is True:
                 self.core.network_filter.ban_user(user)
