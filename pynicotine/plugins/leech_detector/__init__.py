@@ -254,21 +254,19 @@ class Plugin(BasePlugin):
 
             # user has files but all folders are locked/private
             if files > 0 and folders == private_folders:
-                ban_reason = """[AUTO-MESSAGE] All your files are private so mine are no longer unavailable to you."""
+                ban_reason = """[AUTO-MESSAGE] All your files are private."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
             # user is not sharing - send the wikihow link
             if files == 0 and folders == 0:
-                ban_reason = """[AUTO-MESSAGE] You are not sharing any files. Here is how to add some. 
-https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
+                ban_reason = """[AUTO-MESSAGE] You are not sharing any files."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
             # user trys to avoid being detected by regular slsk client by adding an empty directory
-            if files == 0 and folders == 1:
-                ban_reason = """[AUTO-MESSAGE] You have 0 files and 1 empty folder. 
-You know how to add shared folders but chose to share one with 0 files."""
+            if files == 0 and folders > 0:
+                ban_reason = """[AUTO-MESSAGE] Please contribute. Your shared folders are empty."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
@@ -317,4 +315,4 @@ You know how to add shared folders but chose to share one with 0 files."""
             show_ui=self.settings["open_private_chat"],
             switch_page=False,
         )
-        self.log("User %s has been banned and a message was sent.", user)
+        self.log("User %s has been banned. The message sent was %s", user, reason)
