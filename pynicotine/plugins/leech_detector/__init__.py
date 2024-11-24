@@ -315,4 +315,10 @@ class Plugin(BasePlugin):
             show_ui=self.settings["open_private_chat"],
             switch_page=False,
         )
-        self.log("User %s has been banned. The message sent was %s", user, reason)
+        self.log(
+            "User %s has been banned. The message sent was %s",
+            (
+                user,
+                reason,
+            ),
+        )
