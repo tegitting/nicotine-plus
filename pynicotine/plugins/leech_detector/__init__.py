@@ -254,19 +254,19 @@ class Plugin(BasePlugin):
 
             # user has files but all folders are locked/private
             if files > 0 and folders == private_folders:
-                ban_reason = """[AUTO-MESSAGE] All your files are private."""
+                ban_reason = """[AUTO-MESSAGE] You cannot download from me when your files are private."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
             # user is not sharing - send the wikihow link
             if files == 0 and folders == 0:
-                ban_reason = """[AUTO-MESSAGE] You are not sharing any files."""
+                ban_reason = """[AUTO-MESSAGE] You cannot download from me when you are not sharing any files."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
             # user trys to avoid being detected by regular slsk client by adding an empty directory
             if files == 0 and folders > 0:
-                ban_reason = """[AUTO-MESSAGE] Please contribute. Your shared folders are empty."""
+                ban_reason = """[AUTO-MESSAGE] You cannot download from me when your shared folders are empty."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
