@@ -1,4 +1,4 @@
 Version = "0.3"
 Authors = "tegitting"
 Name = "Leech Detector (Unofficial)"
-Description = "Detects leechers, optionally sends a message and/or apply a ban. Not supported by the Nicotine+ developers."
+Description = "Description = "Detects leechers, optionallt sends them a message and/or bans them.\n\nMessage placeholders:\n- %files% : number of required files\n- %folders% : number of required folders\n- %percent% : maximum percent of locked folders allowed.\n- NOTE: This addon is NOT endorsed or supported by the Nicotine+ developers."
