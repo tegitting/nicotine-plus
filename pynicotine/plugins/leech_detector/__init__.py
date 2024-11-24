@@ -24,33 +24,45 @@ from pynicotine.utils import human_speed
 
 class Plugin(BasePlugin):
 
-    PLACEHOLDERS = {"%files%": "num_files", "%folders%": "num_folders"}
+    PLACEHOLDERS = {"%files%": "num_files", "%folders%": "num_folders", "%percent%": "percent_threshold"}
 
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            "enable_ban": False,
-            "send_message": False,
-            "open_private_chat": False,
-            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
             "num_files": 1,
             "num_folders": 1,
             "percent_threshold": 1,
+            "send_message": False,
+            "open_private_chat": False,
+            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
+            "enable_ban": False,
             "detected_leechers": [],
         }
         self.metasettings = {
-            "enable_ban": {
-                "description": "Apply a ban to detected leechers",
-                "type": "bool",
+            "num_files": {
+                "description": "Minimum number of shared files:",
+                "type": "int",
+                "minimum": 1,
+            },
+            "num_folders": {
+                "description": "Minimum number of shared folders:",
+                "type": "int",
+                "minimum": 1,
+            },
+            "percent_threshold": {
+                "description": "Allowed percentage of locked/private folders:",
+                "type": "int",
+                "minimum": 1,
+                "maximum": 99,
             },
             "send_message": {
-                "description": "Send a private message to detected leechers",
+                "description": "Send a private message to detected leechers?",
                 "type": "bool",
             },
             "open_private_chat": {
-                "description": "Open chat tabs when sending the private messages",
+                "description": "Open chat tabs when sending the private messages?",
                 "type": "bool",
             },
             "message": {
@@ -60,21 +72,9 @@ class Plugin(BasePlugin):
                 ),
                 "type": "textview",
             },
-            "num_files": {
-                "description": "Require users to have a minimum number of shared files:",
-                "type": "int",
-                "minimum": 1,
-            },
-            "num_folders": {
-                "description": "Require users to have a minimum number of shared folders:",
-                "type": "int",
-                "minimum": 1,
-            },
-            "percent_threshold": {
-                "description": "Maximum percentage of locked/private folders allowed:",
-                "type": "int",
-                "minimum": 1,
-                "maximum": 99,
+            "enable_ban": {
+                "description": "Apply a ban to detected leechers?",
+                "type": "bool",
             },
             "detected_leechers": {
                 "description": "Detected leechers",
@@ -88,10 +88,13 @@ class Plugin(BasePlugin):
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
+        
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
+            
         if self.settings["num_folders"] < min_num_folders:
             self.settings["num_folders"] = min_num_folders
+            
         if self.settings["percent_threshold"] < percent_allowed:
             self.settings["percent_threshold"] = percent_allowed
 
@@ -114,7 +117,7 @@ class Plugin(BasePlugin):
 
     # receive stats for a user
     def user_stats_notification(self, user, stats):
-        # only process the notification if private_dirs in stats
+        # only process the notification when private_dirs is in stats
         # we only get this in our customised userbrowse function
         if stats.get("private_dirs") is not None:
             # create dictionary entry
@@ -125,14 +128,15 @@ class Plugin(BasePlugin):
             total_shared = int(stats.get("shared_size"))
             total_folders = folders + private_folders
             
-            # prevent a division by zero error
+            # prevent any division by zero error
             if total_folders != 0:
                 # locked_percent = self.calculate_percentage(private_folders, int(total_folders))
-                locked_percent = round((private_folders / total_folders) * 100)
+                locked_percent = (private_folders / total_folders) * 100
+                locked_percent = round(locked_percent)
             else:
                 locked_percent = 0
 
-            # display the users shares / log progress
+            # display the users shares
             self.log(
                 "User %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
                 (
@@ -149,7 +153,7 @@ class Plugin(BasePlugin):
             if user in self.probed_downloaders:
                 # log progress
                 self.log("User %s is a downloader. Checking stats...", user)
-                # perform some analysis on the stats
+                # then perform some analysis on the stats
                 self.check_downloader(
                     user,
                     files,
@@ -158,16 +162,6 @@ class Plugin(BasePlugin):
                     int(locked_percent),
                     total_shared,
                 )
-
-    def ban_with_reason(self, user, reason):
-        self.core.network_filter.ban_user(user)
-        self.send_private(
-            user,
-            reason,
-            show_ui=self.settings["open_private_chat"],
-            switch_page=False,
-        )
-        self.log("User %s has been banned and a message was sent.", user)
 
     def check_downloader(
         self, user, files, folders, private_folders, locked_percent, total_shared
@@ -260,20 +254,20 @@ class Plugin(BasePlugin):
 
             # user has files but all folders are locked/private
             if files > 0 and folders == private_folders:
-                ban_reason = """[AUTO-MESSAGE] You tried to download from me but all your files are private."""
+                ban_reason = """[AUTO-MESSAGE] All your files are private so mine are no longer unavailable to you."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
             # user is not sharing - send the wikihow link
             if files == 0 and folders == 0:
-                ban_reason = """[AUTO-MESSAGE] You tried to download from me but you are not sharing any files. 
+                ban_reason = """[AUTO-MESSAGE] You are not sharing any files. Here is how to add some. 
 https://www.wikihow.com/Avoid-Being-Banned-on-Soulseek"""
                 self.ban_with_reason(user, ban_reason)
                 return
 
-            # user trying to evade detection by regular slsk client
+            # user trys to avoid being detected by regular slsk client by adding an empty directory
             if files == 0 and folders == 1:
-                ban_reason = """[AUTO-MESSAGE] You tried to download from me but you have 0 files and 1 empty folder. 
+                ban_reason = """[AUTO-MESSAGE] You have 0 files and 1 empty folder. 
 You know how to add shared folders but chose to share one with 0 files."""
                 self.ban_with_reason(user, ban_reason)
                 return
@@ -314,3 +308,13 @@ You know how to add shared folders but chose to share one with 0 files."""
             if self.settings["enable_ban"] is True:
                 self.core.network_filter.ban_user(user)
                 self.log("User %s has been banned", user)
+
+    def ban_with_reason(self, user, reason):
+        self.core.network_filter.ban_user(user)
+        self.send_private(
+            user,
+            reason,
+            show_ui=self.settings["open_private_chat"],
+            switch_page=False,
+        )
+        self.log("User %s has been banned and a message was sent.", user)
