@@ -1,4 +1,4 @@
 Version = "0.3"
 Authors = "tegitting"
-Name = "[Uncle Leech]"
-Description = "Detects leechers"
+Name = "Leech Detector (Unofficial)"
+Description = "Detects leechers, optionally sends a message and/or apply a ban. Not supported by the Nicotine+ developers."
