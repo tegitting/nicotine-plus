@@ -981,13 +981,14 @@ class Shares:
         # We've connected and rescanned our shares again. Fake a user stats message, since
         # server doesn't send updates for our own username after the first WatchUser message
         # response
-        #events.emit(
-        #    "user-stats",
-        #    GetUserStats(
-        #        user=local_username,
-        #        avgspeed=core.uploads.upload_speed, files=num_shared_files, dirs=num_shared_folders
-        #    )
-        #)
+    
+        events.emit(
+            "user-stats",
+            GetUserStats(
+                user=local_username,
+                avgspeed=core.uploads.upload_speed, files=num_shared_files, dirs=num_shared_folders
+            )
+        )
 
     # Scanning #
 
