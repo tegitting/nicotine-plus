@@ -34,6 +34,9 @@ class Plugin(BasePlugin):
             "num_files": 1,
             "num_folders": 1,
             "percent_threshold": 1,
+            "enforce_share_size": False,
+            "share_size": 1,
+            "share_size_unit": "Bytes",
             "send_message": False,
             "open_private_chat": False,
             "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
@@ -56,6 +59,21 @@ class Plugin(BasePlugin):
                 "type": "int",
                 "minimum": 1,
                 "maximum": 99,
+            },
+            "enforce_share_size": {
+                "description": "Enforce share sizes?",
+                "type": "bool",
+            },
+            "share_size": {
+                "description": "Size of share required:",
+                "type": "int",
+                "minimum": 1,
+                "maximum": 1000,
+            },
+            "share_size_unit": {
+                "description": "Unit of measurement:",
+                "type": "dropdown",
+                "options": ("Bytes", "Megabytes", "Gigabytes")
             },
             "send_message": {
                 "description": "Send a private message to detected leechers?",
