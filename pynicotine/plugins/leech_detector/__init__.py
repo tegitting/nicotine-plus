@@ -282,7 +282,7 @@ class Plugin(BasePlugin):
                 (
                     user,
                     self.settings["share_size_unit"],
-                    total_shared,
+                    converted_share,
                     self.settings["share_size"],
                 ),
             )
