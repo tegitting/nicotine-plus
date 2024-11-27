@@ -138,12 +138,12 @@ class Plugin(BasePlugin):
         )
 
     # convert bytes to mbs
-    def convert_bytes_to_megs(self, bytes):
-        return round(bytes / 1048576)
+    def convert_bytes_to_megs(self, bytes_value):
+        return round(bytes_value / 1048576)
 
     # convert bytes to gbs
-    def convert_bytes_to_gigs(self, bytes):
-        return round(bytes / 1073741824)
+    def convert_bytes_to_gigs(self, bytes_value):
+        return round(bytes_value / 1073741824)
 
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
