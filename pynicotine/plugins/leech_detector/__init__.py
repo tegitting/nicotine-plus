@@ -127,7 +127,7 @@ class Plugin(BasePlugin):
         self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers")
         self.log(
             "Users require %d files, %d folders with less than %d" + "%% locked and at least %s"
-            + " %s of data shared.",
+            + "%s of data to be shared.",
             (
                 self.settings["num_files"],
                 self.settings["num_folders"],
@@ -183,11 +183,11 @@ class Plugin(BasePlugin):
 
             # log progress and display the users shares
             self.log(
-                "User %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
+                "User %s shares %s files %s folders with %s private. %s percent of %s is locked",
                 (
                     user,
                     files,
-                    folders,
+                    total_folders,
                     private_folders,
                     locked_percent,
                     human_size(total_shared),
@@ -202,14 +202,14 @@ class Plugin(BasePlugin):
                 self.check_downloader(
                     user,
                     files,
-                    folders,
+                    total_folders,
                     private_folders,
                     int(locked_percent),
                     total_shared,
                 )
 
     def check_downloader(
-        self, user, files, folders, private_folders, locked_percent, total_shared
+        self, user, files, total_folders, private_folders, locked_percent, total_shared
     ):
 
         if self.settings["share_size_unit"] == "MB":
