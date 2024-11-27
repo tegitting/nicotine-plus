@@ -304,64 +304,64 @@ class Plugin(BasePlugin):
             return
 
         # stats are not good
-        else:
-            # the user is a detected leecher - log progress
-            self.log("User %s is not sharing enough...", user)
+        # else:
+        # the user is a detected leecher - log progress
+        self.log("User %s is not sharing enough...", user)
 
-            # user has files but all folders are locked/private
-            if files > 0 and folders == private_folders:
-                ban_reason = """[AUTO-MESSAGE] You cannot download from me when your files are private."""
-                self.ban_with_reason(user, ban_reason)
-                return
+        # user has files but all folders are locked/private
+        if files > 0 and folders == private_folders:
+            ban_reason = """[AUTO-MESSAGE] You cannot download from me when your files are private."""
+            self.ban_with_reason(user, ban_reason)
+            return
 
-            # user is not sharing - send the wikihow link
-            if not files and not folders:
-                ban_reason = """[AUTO-MESSAGE] You cannot download from me when you are not sharing any files."""
-                self.ban_with_reason(user, ban_reason)
-                return
+        # user is not sharing - send the wikihow link
+        if not files and not folders:
+            ban_reason = """[AUTO-MESSAGE] You cannot download from me when you are not sharing any files."""
+            self.ban_with_reason(user, ban_reason)
+            return
 
-            # user trys to avoid being detected by regular slsk client by adding an empty directory
-            if not files and folders > 0:
-                ban_reason = """[AUTO-MESSAGE] You cannot download from me when your shared folders are empty."""
-                self.ban_with_reason(user, ban_reason)
-                return
+        # user trys to avoid being detected by regular slsk client by adding an empty directory
+        if not files and folders > 0:
+            ban_reason = """[AUTO-MESSAGE] You cannot download from me when your shared folders are empty."""
+            self.ban_with_reason(user, ban_reason)
+            return
 
-            # if messaging turned on
-            if self.settings["send_message"] is True:
+        # if messaging turned on
+        if self.settings["send_message"] is True:
 
-                # if no message is configured
-                if not self.settings["message"]:
-                    # log it
-                    self.log(
-                        "User %s is leeching, no message configured in plugin",
-                        user,
-                    )
+            # if no message is configured
+            if not self.settings["message"]:
+                # log it
+                self.log(
+                    "User %s is leeching, no message configured in plugin",
+                    user,
+                )
 
-                # else send the message
-                else:
-                    for line in self.settings["message"].splitlines():
-                        for placeholder, option_key in self.PLACEHOLDERS.items():
-                            # peplace message placeholders with actual values specified in the plugin settings
-                            line = line.replace(
-                                placeholder, str(self.settings[option_key])
-                            )
-                        self.send_private(
-                            user,
-                            line,
-                            show_ui=self.settings["open_private_chat"],
-                            switch_page=False,
+            # else send the message
+            else:
+                for line in self.settings["message"].splitlines():
+                    for placeholder, option_key in self.PLACEHOLDERS.items():
+                        # peplace message placeholders with actual values specified in the plugin settings
+                        line = line.replace(
+                            placeholder, str(self.settings[option_key])
                         )
-                    # log progress
-                    self.log("User %s is leeching - a message was sent", user)
+                    self.send_private(
+                        user,
+                        line,
+                        show_ui=self.settings["open_private_chat"],
+                        switch_page=False,
+                    )
+                # log progress
+                self.log("User %s is leeching - a message was sent", user)
 
-            # add the user to the detected leecher list
-            if user not in self.settings["detected_leechers"]:
-                self.settings["detected_leechers"].append(user)
+        # add the user to the detected leecher list
+        if user not in self.settings["detected_leechers"]:
+            self.settings["detected_leechers"].append(user)
 
-            # if a ban is required
-            if self.settings["enable_ban"] is True:
-                self.core.network_filter.ban_user(user)
-                self.log("User %s has been banned", user)
+        # if a ban is required
+        if self.settings["enable_ban"] is True:
+            self.core.network_filter.ban_user(user)
+            self.log("User %s has been banned", user)
 
     def ban_with_reason(self, user, reason):
         self.core.network_filter.ban_user(user)
