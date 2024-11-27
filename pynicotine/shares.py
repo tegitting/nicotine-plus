@@ -961,11 +961,11 @@ class Shares:
         num_shared_folders = len(self.share_dbs.get("public_streams", {}))
         num_shared_files = len(self.share_dbs.get("public_files", {}))
 
-        #if config.sections["transfers"]["reveal_buddy_shares"]:
+        # if config.sections["transfers"]["reveal_buddy_shares"]:
         num_shared_folders += len(self.share_dbs.get("buddy_streams", {}))
         num_shared_files += len(self.share_dbs.get("buddy_files", {}))
 
-        #if config.sections["transfers"]["reveal_trusted_shares"]:
+        # if config.sections["transfers"]["reveal_trusted_shares"]:
         num_shared_folders += len(self.share_dbs.get("trusted_streams", {}))
         num_shared_files += len(self.share_dbs.get("trusted_files", {}))
 
@@ -981,7 +981,7 @@ class Shares:
         # We've connected and rescanned our shares again. Fake a user stats message, since
         # server doesn't send updates for our own username after the first WatchUser message
         # response
-    
+
         events.emit(
             "user-stats",
             GetUserStats(
