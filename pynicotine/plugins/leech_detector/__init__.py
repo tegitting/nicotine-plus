@@ -202,10 +202,10 @@ class Plugin(BasePlugin):
     ):
 
         if self.settings["share_size_unit"] == "Megabytes":
-            self.convert_bytes_to_mbs(total_shared)
+            total_shared = self.convert_bytes_to_mbs(total_shared)
 
         if self.settings["share_size_unit"] == "Gigabytes":
-            self.convert_bytes_to_gbs(total_shared)
+            total_shared = self.convert_bytes_to_gbs(total_shared)
 
         # log progress
         # filecount
@@ -266,7 +266,7 @@ class Plugin(BasePlugin):
                 ),
             )
         # share size
-        if total_shared > self.settings["share_size"]:
+        if total_shared < self.settings["share_size"]:
             self.log(
                 "User %s failed %s share size check - has %s vs %s required",
                 (
