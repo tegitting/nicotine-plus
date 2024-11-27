@@ -106,13 +106,13 @@ class Plugin(BasePlugin):
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
-        
+
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
-            
+
         if self.settings["num_folders"] < min_num_folders:
             self.settings["num_folders"] = min_num_folders
-            
+
         if self.settings["percent_threshold"] < percent_allowed:
             self.settings["percent_threshold"] = percent_allowed
 
@@ -145,7 +145,7 @@ class Plugin(BasePlugin):
             private_folders = int(stats.get("private_dirs"))
             total_shared = int(stats.get("shared_size"))
             total_folders = folders + private_folders
-            
+
             # prevent any division by zero error
             if total_folders != 0:
                 # locked_percent = self.calculate_percentage(private_folders, int(total_folders))
@@ -319,7 +319,7 @@ class Plugin(BasePlugin):
             # add the user to the detected leecher list
             if user not in self.settings["detected_leechers"]:
                 self.settings["detected_leechers"].append(user)
-                
+
             # if a ban is required
             if self.settings["enable_ban"] is True:
                 self.core.network_filter.ban_user(user)
