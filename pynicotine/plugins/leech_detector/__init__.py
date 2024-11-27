@@ -239,12 +239,12 @@ class Plugin(BasePlugin):
                 ),
             )
         # folder counts
-        if folders <= self.settings["num_folders"]:
+        if total_folders <= self.settings["num_folders"]:
             self.log(
                 "User %s failed folder check - has %s vs %s required",
                 (
                     user,
-                    folders,
+                    total_folders,
                     self.settings["num_folders"],
                 ),
             )
@@ -253,7 +253,7 @@ class Plugin(BasePlugin):
                 "User %s passed folder check - has %s vs %s required",
                 (
                     user,
-                    folders,
+                    total_folders,
                     self.settings["num_folders"],
                 ),
             )
@@ -327,19 +327,19 @@ class Plugin(BasePlugin):
         self.log("User %s is not sharing enough...", user)
 
         # user has files but all folders are locked/private
-        if files > 0 and folders == private_folders:
+        if files > 0 and total_folders == private_folders:
             ban_reason = """[AUTO-MESSAGE] You cannot download from me when all your files are private."""
             self.ban_with_reason(user, ban_reason)
             return
 
         # user is not sharing - send the wikihow link
-        if not files and not folders:
+        if not files and not total_folders:
             ban_reason = """[AUTO-MESSAGE] You cannot download from me when you are not sharing any files."""
             self.ban_with_reason(user, ban_reason)
             return
 
         # user trys to avoid being detected by regular slsk client by adding an empty directory
-        if not files and folders > 0:
+        if not files and total_folders > 0:
             ban_reason = """[AUTO-MESSAGE] You cannot download from me when your shared folders are empty."""
             self.ban_with_reason(user, ban_reason)
             return
