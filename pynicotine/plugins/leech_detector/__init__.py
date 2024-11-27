@@ -127,9 +127,9 @@ class Plugin(BasePlugin):
     # convert bytes to selected share_size_unit
     def convert_bytes(self, bytes_value):
         if self.settings["share_size_unit"] == "Megabytes":
-            return bytes_value / 1048576
-        elif self.settings["share_size_unit"] == "Gigabytes":
-            return bytes_value / 1073741824
+            return round(bytes_value / 1048576)
+        if self.settings["share_size_unit"] == "Gigabytes":
+            return round(bytes_value / 1073741824)
 
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
@@ -315,13 +315,13 @@ class Plugin(BasePlugin):
                 return
 
             # user is not sharing - send the wikihow link
-            if files == 0 and folders == 0:
+            if not files and not folders:
                 ban_reason = """[AUTO-MESSAGE] You cannot download from me when you are not sharing any files."""
                 self.ban_with_reason(user, ban_reason)
                 return
 
             # user trys to avoid being detected by regular slsk client by adding an empty directory
-            if files == 0 and folders > 0:
+            if not files and folders > 0:
                 ban_reason = """[AUTO-MESSAGE] You cannot download from me when your shared folders are empty."""
                 self.ban_with_reason(user, ban_reason)
                 return
