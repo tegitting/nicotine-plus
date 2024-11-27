@@ -77,7 +77,7 @@ class Plugin(BasePlugin):
             "share_size_unit": {
                 "description": "Unit of measurement:",
                 "type": "dropdown",
-                "options": ("Megabytes", "Gigabytes"),
+                "options": ("MB", "GB"),
             },
             "send_message": {
                 "description": "Send a private message to detected leechers?",
@@ -124,12 +124,31 @@ class Plugin(BasePlugin):
         if self.settings["share_size"] < share_size:
             self.settings["share_size"] = share_size
 
+        if self.settings["share_size_unit"] == "MB":
+            converted_share = self.convert_bytes_to_mbs(total_shared)
+
+        if self.settings["share_size_unit"] == "GB":
+            converted_share = self.convert_bytes_to_gbs(total_shared)
+
+        self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers")
+        self.log(
+            "Users require %d files, %d public folders, less than %d locked and at least %s"
+            + "%s shared.",
+            (
+                self.settings["num_files"],
+                self.settings["num_folders"],
+                self.settings["percent_threshold"],
+                self.settings["share_size"],
+                self.settings["share_size_unit"],
+            ),
+        )
+
     # convert bytes to mbs
-    def convert_bytes_to_mbs(self, bytes_value):
+    def convert_bytes2mb(self, bytes_value):
         return round(bytes_value / 1048576)
 
     # convert bytes to gbs
-    def convert_bytes_to_gbs(self, bytes_value):
+    def convert_bytes2gb(self, bytes_value):
         return round(bytes_value / 1073741824)
 
     # function to calculate percentage
@@ -201,11 +220,11 @@ class Plugin(BasePlugin):
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
 
-        if self.settings["share_size_unit"] == "Megabytes":
-            converted_share = self.convert_bytes_to_mbs(total_shared)
+        if self.settings["share_size_unit"] == "MB":
+            converted_share = self.convert_bytes2mb(total_shared)
 
-        if self.settings["share_size_unit"] == "Gigabytes":
-            converted_share = self.convert_bytes_to_gbs(total_shared)
+        if self.settings["share_size_unit"] == "GB":
+            converted_share = self.convert_bytes2gb(total_shared)
 
         # log progress
         # filecount
