@@ -124,12 +124,13 @@ class Plugin(BasePlugin):
         if self.settings["share_size"] < share_size:
             self.settings["share_size"] = share_size
 
-    # convert bytes to selected share_size_unit
-    def convert_bytes(self, bytes_value):
-        if self.settings["share_size_unit"] == "Megabytes":
-            return round(bytes_value / 1048576)
-        if self.settings["share_size_unit"] == "Gigabytes":
-            return round(bytes_value / 1073741824)
+    # convert bytes to mbs
+    def convert_bytes_to_mbs(self, bytes_value):
+        return round(bytes_value / 1048576)
+
+    # convert bytes to gbs
+    def convert_bytes_to_gbs(self, bytes_value):
+        return round(bytes_value / 1073741824)
 
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
@@ -199,6 +200,12 @@ class Plugin(BasePlugin):
     def check_downloader(
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
+        
+        if self.settings["share_size_unit"] == "Megabytes":
+            self.convert_bytes_to_mbs(total_shared)
+
+        if self.settings["share_size_unit"] == "Gigabytes":
+            self.convert_bytes_to_gbs(total_shared)
 
         total_shared = self.convert_bytes(total_shared)
         # log progress
