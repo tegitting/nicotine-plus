@@ -200,7 +200,7 @@ class Plugin(BasePlugin):
     def check_downloader(
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
-        
+
         if self.settings["share_size_unit"] == "Megabytes":
             self.convert_bytes_to_mbs(total_shared)
 
