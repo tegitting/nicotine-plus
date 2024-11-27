@@ -304,7 +304,7 @@ class Plugin(BasePlugin):
         # if stats are good
         if (
             files >= self.settings["num_files"]
-            and folders >= self.settings["num_folders"]
+            and total_folders >= self.settings["num_folders"]
             and locked_percent < self.settings["percent_threshold"]
         ):
             # mark the user as OK
