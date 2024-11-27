@@ -24,7 +24,11 @@ from pynicotine.utils import human_speed
 
 class Plugin(BasePlugin):
 
-    PLACEHOLDERS = {"%files%": "num_files", "%folders%": "num_folders", "%percent%": "percent_threshold"}
+    PLACEHOLDERS = {
+        "%files%": "num_files",
+        "%folders%": "num_folders",
+        "%percent%": "percent_threshold",
+    }
 
     def __init__(self, *args, **kwargs):
 
@@ -36,7 +40,7 @@ class Plugin(BasePlugin):
             "percent_threshold": 1,
             "enforce_share_size": False,
             "share_size": 1,
-            "share_size_unit": "Bytes",
+            "share_size_unit": "Megabytes",
             "send_message": False,
             "open_private_chat": False,
             "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
@@ -73,7 +77,7 @@ class Plugin(BasePlugin):
             "share_size_unit": {
                 "description": "Unit of measurement:",
                 "type": "dropdown",
-                "options": ("Bytes", "Megabytes", "Gigabytes")
+                "options": ("Megabytes", "Gigabytes"),
             },
             "send_message": {
                 "description": "Send a private message to detected leechers?",
@@ -106,6 +110,7 @@ class Plugin(BasePlugin):
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
+        share_size = self.metasettings["share_size"]["minimum"]
 
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
@@ -115,6 +120,16 @@ class Plugin(BasePlugin):
 
         if self.settings["percent_threshold"] < percent_allowed:
             self.settings["percent_threshold"] = percent_allowed
+
+        if self.settings["share_size"] < share_size:
+            self.settings["share_size"] = share_size
+
+    # convert bytes to selected share_size_unit
+    def convert_bytes(self, bytes_value):
+        if self.settings["share_size_unit"] == "Megabytes":
+            return bytes_value / 1048576
+        elif self.settings["share_size_unit"] == "Gigabytes":
+            return bytes_value / 1073741824
 
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
@@ -185,7 +200,9 @@ class Plugin(BasePlugin):
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
 
+        total_shared = self.convert_bytes(total_shared)
         # log progress
+        # filecount
         if files <= self.settings["num_files"]:
             self.log(
                 "User %s failed file check - has %s vs %s required",
@@ -204,7 +221,7 @@ class Plugin(BasePlugin):
                     self.settings["num_files"],
                 ),
             )
-
+        # folder counts
         if folders <= self.settings["num_folders"]:
             self.log(
                 "User %s failed folder check - has %s vs %s required",
@@ -223,7 +240,7 @@ class Plugin(BasePlugin):
                     self.settings["num_folders"],
                 ),
             )
-
+        # percentage
         if locked_percent > self.settings["percent_threshold"]:
             self.log(
                 "User %s failed locked percentage check - %s vs %s",
@@ -240,6 +257,27 @@ class Plugin(BasePlugin):
                     user,
                     locked_percent,
                     self.settings["percent_threshold"],
+                ),
+            )
+        # share size
+        if total_shared > self.settings["share_size"]:
+            self.log(
+                "User %s failed %s share size check - has %s vs %s required",
+                (
+                    user,
+                    self.settings["share_size_unit"],
+                    total_shared,
+                    self.settings["share_size"],
+                ),
+            )
+        else:
+            self.log(
+                "User %s passed %s share size check - has %s vs %s required",
+                (
+                    user,
+                    self.settings["share_size_unit"],
+                    total_shared,
+                    self.settings["share_size"],
                 ),
             )
             # log progress END
