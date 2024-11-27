@@ -282,7 +282,7 @@ class Plugin(BasePlugin):
                 "User %s failed share size check - has %s" + "%s" + " when %s" + "%s is required",
                 (
                     user,
-                    converted_share
+                    converted_share,
                     self.settings["share_size_unit"],
                     self.settings["share_size"],
                     self.settings["share_size_unit"],
@@ -293,7 +293,7 @@ class Plugin(BasePlugin):
                 "User %s passed share size check - has %s" + "%s" + " when %s" + "%s is required",
                 (
                     user,
-                    converted_share
+                    converted_share,
                     self.settings["share_size_unit"],
                     self.settings["share_size"],
                     self.settings["share_size_unit"],
