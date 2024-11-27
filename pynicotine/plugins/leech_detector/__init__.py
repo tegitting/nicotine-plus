@@ -207,7 +207,6 @@ class Plugin(BasePlugin):
         if self.settings["share_size_unit"] == "Gigabytes":
             self.convert_bytes_to_gbs(total_shared)
 
-        total_shared = self.convert_bytes(total_shared)
         # log progress
         # filecount
         if files <= self.settings["num_files"]:
