@@ -40,7 +40,7 @@ class Plugin(BasePlugin):
             "percent_threshold": 1,
             "enforce_share_size": False,
             "share_size": 1,
-            "share_size_unit": "Megabytes",
+            "share_size_unit": "MB",
             "send_message": False,
             "open_private_chat": False,
             "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
@@ -124,16 +124,10 @@ class Plugin(BasePlugin):
         if self.settings["share_size"] < share_size:
             self.settings["share_size"] = share_size
 
-        if self.settings["share_size_unit"] == "MB":
-            converted_share = self.convert_bytes_to_mbs(total_shared)
-
-        if self.settings["share_size_unit"] == "GB":
-            converted_share = self.convert_bytes_to_gbs(total_shared)
-
         self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers")
         self.log(
-            "Users require %d files, %d public folders, less than %d locked and at least %s"
-            + "%s shared.",
+            "Users require %d files, %d folders with less than %d" + "%% locked and at least %s"
+            + " %s of data shared.",
             (
                 self.settings["num_files"],
                 self.settings["num_folders"],
@@ -144,16 +138,16 @@ class Plugin(BasePlugin):
         )
 
     # convert bytes to mbs
-    def convert_bytes2mb(self, bytes_value):
-        return round(bytes_value / 1048576)
+    def convert_bytes_to_megs(self, bytes):
+        return round(bytes / 1048576)
 
     # convert bytes to gbs
-    def convert_bytes2gb(self, bytes_value):
-        return round(bytes_value / 1073741824)
+    def convert_bytes_to_gigs(self, bytes):
+        return round(bytes / 1073741824)
 
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
-        percent = (part / whole) * 100
+        percent = round((part / whole) * 100)
         return percent
 
     # an upload has been requested
@@ -179,17 +173,15 @@ class Plugin(BasePlugin):
             folders = int(stats.get("dirs"))
             private_folders = int(stats.get("private_dirs"))
             total_shared = int(stats.get("shared_size"))
-            total_folders = folders + private_folders
+            total_folders = int(folders + private_folders)
 
             # prevent any division by zero error
-            if total_folders != 0:
-                # locked_percent = self.calculate_percentage(private_folders, int(total_folders))
-                locked_percent = (private_folders / total_folders) * 100
-                locked_percent = round(locked_percent)
+            if total_folders:
+                locked_percent = self.calculate_percentage(private_folders, total_folders)
             else:
                 locked_percent = 0
 
-            # display the users shares
+            # log progress and display the users shares
             self.log(
                 "User %s shares are: %s files %s folders with %s private. %s percent of %s is locked",
                 (
@@ -221,10 +213,10 @@ class Plugin(BasePlugin):
     ):
 
         if self.settings["share_size_unit"] == "MB":
-            converted_share = self.convert_bytes2mb(total_shared)
+            converted_share = self.convert_bytes_to_megs(int(total_shared))
 
         if self.settings["share_size_unit"] == "GB":
-            converted_share = self.convert_bytes2gb(total_shared)
+            converted_share = self.convert_bytes_to_gigs(int(total_shared))
 
         # log progress
         # filecount
@@ -287,22 +279,24 @@ class Plugin(BasePlugin):
         # share size
         if converted_share < self.settings["share_size"]:
             self.log(
-                "User %s failed %s share size check - has %s vs %s required",
+                "User %s failed share size check - has %s" + "%s" + " when %s" + "%s is required",
                 (
                     user,
+                    converted_share
                     self.settings["share_size_unit"],
-                    converted_share,
                     self.settings["share_size"],
+                    self.settings["share_size_unit"],
                 ),
             )
         else:
             self.log(
-                "User %s passed %s share size check - has %s vs %s required",
+                "User %s passed share size check - has %s" + "%s" + " when %s" + "%s is required",
                 (
                     user,
+                    converted_share
                     self.settings["share_size_unit"],
-                    converted_share,
                     self.settings["share_size"],
+                    self.settings["share_size_unit"],
                 ),
             )
             # log progress END
@@ -329,13 +323,12 @@ class Plugin(BasePlugin):
             return
 
         # stats are not good
-        # else:
         # the user is a detected leecher - log progress
         self.log("User %s is not sharing enough...", user)
 
         # user has files but all folders are locked/private
         if files > 0 and folders == private_folders:
-            ban_reason = """[AUTO-MESSAGE] You cannot download from me when your files are private."""
+            ban_reason = """[AUTO-MESSAGE] You cannot download from me when all your files are private."""
             self.ban_with_reason(user, ban_reason)
             return
 
