@@ -279,22 +279,20 @@ class Plugin(BasePlugin):
         # share size
         if converted_share < self.settings["share_size"]:
             self.log(
-                "User %s failed share size check - has %s" + "%s" + " when %s" + "%s is required",
+                "User %s failed share size check - has %s" + " when %s" + "%s is required",
                 (
                     user,
-                    converted_share,
-                    self.settings["share_size_unit"],
+                    human_size(total_shared),
                     self.settings["share_size"],
                     self.settings["share_size_unit"],
                 ),
             )
         else:
             self.log(
-                "User %s passed share size check - has %s" + "%s" + " when %s" + "%s is required",
+                "User %s passed share size check - has %s" + "when %s" + "%s is required",
                 (
                     user,
-                    converted_share,
-                    self.settings["share_size_unit"],
+                    human_size(total_shared),
                     self.settings["share_size"],
                     self.settings["share_size_unit"],
                 ),
@@ -359,7 +357,7 @@ class Plugin(BasePlugin):
             else:
                 for line in self.settings["message"].splitlines():
                     for placeholder, option_key in self.PLACEHOLDERS.items():
-                        # peplace message placeholders with actual values specified in the plugin settings
+                        # replace message placeholders with actual values specified in the plugin settings
                         line = line.replace(
                             placeholder, str(self.settings[option_key])
                         )
