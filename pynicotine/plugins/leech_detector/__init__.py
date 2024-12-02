@@ -215,17 +215,6 @@ class Plugin(BasePlugin):
 
         # log progress
         # percentage
-
-        else:
-            self.log(
-                "User %s passed percentage check - %s vs %s",
-                (
-                    user,
-                    locked_percent,
-                    self.settings["percent_threshold"],
-                ),
-            )
-        # share size
         if converted_share < self.settings["share_size"]:
             self.log(
                 "User %s failed share size check - has %s"
@@ -257,7 +246,6 @@ class Plugin(BasePlugin):
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
             and locked_percent < self.settings["percent_threshold"]
-            and converted_share >= self.settings["share_size"]
         ):
             # mark the user as OK
             self.probed_downloaders[user] = "OK"
