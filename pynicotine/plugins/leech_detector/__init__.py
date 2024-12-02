@@ -43,7 +43,6 @@ class Plugin(BasePlugin):
             "share_size_unit": "MB",
             "send_message": False,
             "open_private_chat": False,
-            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
             "enable_ban": False,
             "detected_leechers": [],
         }
@@ -87,13 +86,6 @@ class Plugin(BasePlugin):
                 "description": "Open chat tabs when sending the private messages?",
                 "type": "bool",
             },
-            "message": {
-                "description": (
-                    "Private chat message to send to leechers. Each line is sent as a separate message, "
-                    "too many message lines may get you temporarily banned for spam!"
-                ),
-                "type": "textview",
-            },
             "enable_ban": {
                 "description": "Apply a ban to detected leechers?",
                 "type": "bool",
@@ -124,9 +116,12 @@ class Plugin(BasePlugin):
         if self.settings["share_size"] < share_size:
             self.settings["share_size"] = share_size
 
-        self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers")
         self.log(
-            "Users require %d files, %d folders with less than %d" + "%% locked and at least %s"
+            "NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers"
+        )
+        self.log(
+            "Users require %d files, %d folders with less than %d"
+            + "%% locked and at least %s"
             + "%s of data to be shared.",
             (
                 self.settings["num_files"],
@@ -173,11 +168,11 @@ class Plugin(BasePlugin):
             folders = int(stats.get("dirs"))
             private_folders = int(stats.get("private_dirs"))
             total_shared = int(stats.get("shared_size"))
-            total_folders = int(folders + private_folders)
+            # total_folders = int(folders + private_folders)
 
             # prevent any division by zero error
-            if total_folders:
-                locked_percent = self.calculate_percentage(private_folders, total_folders)
+            if folders:
+                locked_percent = self.calculate_percentage(private_folders, folders)
             else:
                 locked_percent = 0
 
@@ -187,7 +182,7 @@ class Plugin(BasePlugin):
                 (
                     user,
                     files,
-                    total_folders,
+                    folders,
                     private_folders,
                     locked_percent,
                     human_size(total_shared),
@@ -202,14 +197,14 @@ class Plugin(BasePlugin):
                 self.check_downloader(
                     user,
                     files,
-                    total_folders,
+                    folders,
                     private_folders,
                     int(locked_percent),
                     total_shared,
                 )
 
     def check_downloader(
-        self, user, files, total_folders, private_folders, locked_percent, total_shared
+        self, user, files, folders, private_folders, locked_percent, total_shared
     ):
 
         if self.settings["share_size_unit"] == "MB":
@@ -219,54 +214,8 @@ class Plugin(BasePlugin):
             converted_share = self.convert_bytes_to_gigs(int(total_shared))
 
         # log progress
-        # filecount
-        if files <= self.settings["num_files"]:
-            self.log(
-                "User %s failed file check - has %s vs %s required",
-                (
-                    user,
-                    files,
-                    self.settings["num_files"],
-                ),
-            )
-        else:
-            self.log(
-                "User %s passed file check - has %s vs %s required",
-                (
-                    user,
-                    files,
-                    self.settings["num_files"],
-                ),
-            )
-        # folder counts
-        if total_folders <= self.settings["num_folders"]:
-            self.log(
-                "User %s failed folder check - has %s vs %s required",
-                (
-                    user,
-                    total_folders,
-                    self.settings["num_folders"],
-                ),
-            )
-        else:
-            self.log(
-                "User %s passed folder check - has %s vs %s required",
-                (
-                    user,
-                    total_folders,
-                    self.settings["num_folders"],
-                ),
-            )
         # percentage
-        if locked_percent > self.settings["percent_threshold"]:
-            self.log(
-                "User %s failed locked percentage check - %s vs %s",
-                (
-                    user,
-                    locked_percent,
-                    self.settings["percent_threshold"],
-                ),
-            )
+
         else:
             self.log(
                 "User %s passed percentage check - %s vs %s",
@@ -279,7 +228,9 @@ class Plugin(BasePlugin):
         # share size
         if converted_share < self.settings["share_size"]:
             self.log(
-                "User %s failed share size check - has %s" + " when %s" + "%s is required",
+                "User %s failed share size check - has %s"
+                + " when %s"
+                + "%s is required",
                 (
                     user,
                     human_size(total_shared),
@@ -289,7 +240,9 @@ class Plugin(BasePlugin):
             )
         else:
             self.log(
-                "User %s passed share size check - has %s" + "when %s" + "%s is required",
+                "User %s passed share size check - has %s"
+                + "when %s"
+                + "%s is required",
                 (
                     user,
                     human_size(total_shared),
@@ -302,8 +255,9 @@ class Plugin(BasePlugin):
         # if stats are good
         if (
             files >= self.settings["num_files"]
-            and total_folders >= self.settings["num_folders"]
+            and folders >= self.settings["num_folders"]
             and locked_percent < self.settings["percent_threshold"]
+            and converted_share >= self.settings["share_size"]
         ):
             # mark the user as OK
             self.probed_downloaders[user] = "OK"
@@ -325,50 +279,84 @@ class Plugin(BasePlugin):
         self.log("User %s is not sharing enough...", user)
 
         # user has files but all folders are locked/private
-        if files > 0 and total_folders == private_folders:
+        if files > 0 and folders == private_folders:
             ban_reason = """[AUTO-MESSAGE] You cannot download from me when all your files are private."""
             self.ban_with_reason(user, ban_reason)
             return
 
-        # user is not sharing - send the wikihow link
+        # user is not sharing
         if not files and not total_folders:
             ban_reason = """[AUTO-MESSAGE] You cannot download from me when you are not sharing any files."""
             self.ban_with_reason(user, ban_reason)
             return
 
-        # user trys to avoid being detected by regular slsk client by adding an empty directory
-        if not files and total_folders > 0:
+        # user trys to avoid being detected by regular slsk client by adding an empty directory(s)
+        if not files and folders > 0:
             ban_reason = """[AUTO-MESSAGE] You cannot download from me when your shared folders are empty."""
             self.ban_with_reason(user, ban_reason)
             return
 
-        # if messaging turned on
-        if self.settings["send_message"] is True:
-
-            # if no message is configured
-            if not self.settings["message"]:
-                # log it
-                self.log(
-                    "User %s is leeching, no message configured in plugin",
+        # check the user stats against our settings
+        # files check
+        if files <= self.settings["num_files"]:
+            self.log(
+                "User %s failed file check - has %s but %s is required by the plugin",
+                (
                     user,
+                    files,
+                    self.settings["num_files"],
+                ),
+            )
+            # is messaging enabled?
+            if self.settings["send_message"] is True:
+                file_msg = """[AUTO-MESSAGE] Please consider adding more shared files if you want to download from me, thanks"""
+                self.send_private(
+                    user,
+                    msg,
+                    show_ui=self.settings["open_private_chat"],
+                    switch_page=False,
                 )
 
-            # else send the message
-            else:
-                for line in self.settings["message"].splitlines():
-                    for placeholder, option_key in self.PLACEHOLDERS.items():
-                        # replace message placeholders with actual values specified in the plugin settings
-                        line = line.replace(
-                            placeholder, str(self.settings[option_key])
-                        )
-                    self.send_private(
-                        user,
-                        line,
-                        show_ui=self.settings["open_private_chat"],
-                        switch_page=False,
-                    )
-                # log progress
-                self.log("User %s is leeching - a message was sent", user)
+        # folder check
+        if folders < self.settings["num_folders"]:
+            self.log(
+                "User %s failed folder check - has %s but %s required by the plugin",
+                (
+                    user,
+                    folders,
+                    self.settings["num_folders"],
+                ),
+            )
+            # is messaging enabled?
+            if self.settings["send_message"] is True:
+                folder_msg = """[AUTO-MESSAGE] Please consider adding more shared folders if you want to download from me, thanks"""
+                self.send_private(
+                    user,
+                    folder_msg,
+                    show_ui=self.settings["open_private_chat"],
+                    switch_page=False,
+                )
+
+        if locked_percent > self.settings["percent_threshold"]:
+            self.log(
+                "User %s failed locked percentage check - %s vs %s",
+                (
+                    user,
+                    locked_percent,
+                    self.settings["percent_threshold"],
+                ),
+            )
+            # is messaging enabled?
+            if self.settings["send_message"] is True:
+                percent_msg = (
+                    """[AUTO-MESSAGE] You have too many locked/private files."""
+                )
+                self.send_private(
+                    user,
+                    percent_msg,
+                    show_ui=self.settings["open_private_chat"],
+                    switch_page=False,
+                )
 
         # add the user to the detected leecher list
         if user not in self.settings["detected_leechers"]:
