@@ -323,7 +323,7 @@ class Plugin(BasePlugin):
         # share size
         if converted_share < self.settings["share_size"]:
             self.log(
-                "User %s shares %s but the plugin requires %s %s",
+                "User %s shares %s but the plugin requires %s" + "%s",
                 (
                     user,
                     human_size(total_shared),
