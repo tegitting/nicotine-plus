@@ -238,7 +238,7 @@ class Plugin(BasePlugin):
 
         # stats are not good
         # user is not sharing anything
-        if not files and not total_folders:
+        if not files and not folders:
             self.log("User %s no files or folders.", user)
             ban_reason = "[Auto-Message] You are not sharing any files"
             self.ban_with_reason(user, ban_reason)
@@ -276,7 +276,7 @@ class Plugin(BasePlugin):
                 file_msg = "[Auto-Message] Please consider adding more shared files"
                 self.send_private(
                     user,
-                    msg,
+                    file_msg,
                     show_ui=self.settings["open_private_chat"],
                     switch_page=False,
                 )
@@ -333,10 +333,10 @@ class Plugin(BasePlugin):
             )
             # is messaging enabled?
             if self.settings["send_message"] is True:
-                folder_msg = "[Auto-Message] Please consider sharing more data"
+                data_msg = "[Auto-Message] Please consider sharing more data"
                 self.send_private(
                     user,
-                    folder_msg,
+                    data_msg,
                     show_ui=self.settings["open_private_chat"],
                     switch_page=False,
                 )
