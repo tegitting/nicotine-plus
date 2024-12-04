@@ -24,53 +24,62 @@ from pynicotine.utils import human_speed
 
 class Plugin(BasePlugin):
 
-    PLACEHOLDERS = {
-        "%files%": "num_files",
-        "%folders%": "num_folders",
-        "%percent%": "percent_threshold",
-    }
+    # PLACEHOLDERS = {
+    #    "%files%": "num_files",
+    #    "%folders%": "num_folders",
+    #    "%percent%": "percent_threshold",
+    #}
 
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            "num_files": 1,
+            "no_files_ban": True,
+            "all_privates_ban": True,
+            "empty_folders_ban": True,
+            "num_files": 10,
             "num_folders": 1,
             "percent_threshold": 1,
-            "enforce_share_size": False,
-            "share_size": 1,
+            "share_size": 10,
             "share_size_unit": "MB",
             "send_message": False,
             "open_private_chat": False,
             "enable_ban": False,
-            "detected_leechers": [],
         }
         self.metasettings = {
+            "no_files_ban": {
+                "description": "Ban users with 0 shares?",
+                "type": "bool",
+            },
+            "all_privates_ban": {
+                "description": "Ban users who have all shares locked?",
+                "type": "bool",
+            },
+            "empty_folders_ban": {
+                "description": "Ban users with empty shared folders?",
+                "type": "bool",
+            },
             "num_files": {
                 "description": "Minimum number of shared files:",
                 "type": "int",
-                "minimum": 1,
+                "minimum": 0,
             },
             "num_folders": {
                 "description": "Minimum number of shared folders:",
                 "type": "int",
-                "minimum": 1,
+                "minimum": 0,
             },
             "percent_threshold": {
-                "description": "Allowed percentage of locked/private folders:",
+                "description": "Max percentage of locked/private folders:",
                 "type": "int",
                 "minimum": 1,
                 "maximum": 99,
             },
-            "enforce_share_size": {
-                "description": "Enforce share sizes:",
-                "type": "bool",
-            },
             "share_size": {
                 "description": "Size of share required:",
                 "type": "int",
-                "minimum": 1,
+                "minimum": 0,
                 "maximum": 1000,
             },
             "share_size_unit": {
@@ -90,14 +99,11 @@ class Plugin(BasePlugin):
                 "description": "Apply a ban to detected users?",
                 "type": "bool",
             },
-            "detected_leechers": {
-                "description": "Detected leechers",
-                "type": "list string",
-            },
         }
         self.probed_users = {}
         self.probed_downloaders = {}
 
+    # plugin loaded notifications
     def loaded_notification(self):
         min_num_files = self.metasettings["num_files"]["minimum"]
         min_num_folders = self.metasettings["num_folders"]["minimum"]
@@ -157,6 +163,12 @@ class Plugin(BasePlugin):
         self.core.userbrowse.browse_user(user)
         # log it
         self.log("User %s requested an upload - browsing shares...", user)
+
+    # ban a user and message them with a reasom
+    def ban_with_reason(self, user, reason):
+        self.core.network_filter.ban_user(user)
+        self.send_private(user, reason, show_ui=self.settings["open_private_chat"], switch_page=False)
+        self.log("User %s has been banned. Message sent: %s", user, reason)
 
     # receive stats for a user
     def user_stats_notification(self, user, stats):
@@ -240,27 +252,38 @@ class Plugin(BasePlugin):
         # user is not sharing anything
         if not files and not folders:
             self.log("User %s no files or folders.", user)
-            ban_reason = "[Auto-Message] You are not sharing any files"
-            self.ban_with_reason(user, ban_reason)
-            return
+            # if a ban is required
+            if self.settings["no_files_ban"] is True:
+                ban_reason = "[Auto-Message] You are not sharing any files"
+                self.ban_with_reason(user, ban_reason)
+                return
+            else:
+                return
 
         # user has files but all folders are locked/private
         if files > 0 and folders == private_folders:
             self.log(
                 "User %s has shared files but all of their folders are private.", user
             )
-            ban_reason = "[Auto-Message] All your files are private"
-            self.ban_with_reason(user, ban_reason)
-            return
+            # if a ban is required
+            if self.settings["all_privates_ban"] is True:
+                ban_reason = "[Auto-Message] All your files are private"
+                self.ban_with_reason(user, ban_reason)
+                return
+            else:
+                return
 
-        # user no files but only empty folders
+        # user no files but has empty shared folders
         if not files and folders > 0:
             self.log("User %s no files, only empty folders", user)
-            ban_reason = "[Auto-Message] All your shared folders are empty"
-            self.ban_with_reason(user, ban_reason)
-            return
+            # if a ban is required
+            if self.settings["empty_folders_ban"] is True:
+                ban_reason = "[Auto-Message] All your shared folders are empty"
+                self.ban_with_reason(user, ban_reason)
+                return
+            else:
+                return
 
-        # begin some checks & logs
         # files check
         if files <= self.settings["num_files"]:
             self.log(
@@ -301,6 +324,7 @@ class Plugin(BasePlugin):
                     switch_page=False,
                 )
 
+        # percentage check
         if locked_percent > self.settings["percent_threshold"]:
             self.log(
                 "User %s has %s" + "%% of folders locked, plugin requires less than %s",
@@ -320,7 +344,7 @@ class Plugin(BasePlugin):
                     switch_page=False,
                 )
 
-        # share size
+        # share size check
         if converted_share < self.settings["share_size"]:
             self.log(
                 "User %s shares %s but the plugin requires %s" + self.settings["share_unit"],
@@ -332,7 +356,7 @@ class Plugin(BasePlugin):
             )
             # is messaging enabled?
             if self.settings["send_message"] is True:
-                data_msg = "[Auto-Message] Please consider sharing more data"
+                data_msg = "[Auto-Message] Please consider sharing more"
                 self.send_private(
                     user,
                     data_msg,
@@ -340,27 +364,7 @@ class Plugin(BasePlugin):
                     switch_page=False,
                 )
 
-        # add the user to the detected leecher list
-        if user not in self.settings["detected_leechers"]:
-            self.settings["detected_leechers"].append(user)
-
-        # if a ban is required
+        # if ban is enabled
         if self.settings["enable_ban"] is True:
             self.core.network_filter.ban_user(user)
             self.log("User %s has been banned", user)
-
-    def ban_with_reason(self, user, reason):
-        self.core.network_filter.ban_user(user)
-        self.send_private(
-            user,
-            reason,
-            show_ui=self.settings["open_private_chat"],
-            switch_page=False,
-        )
-        self.log(
-            "User %s has been banned. Message sent: %s",
-            (
-                user,
-                reason,
-            ),
-        )
