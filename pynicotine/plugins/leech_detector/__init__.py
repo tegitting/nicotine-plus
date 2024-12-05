@@ -19,7 +19,6 @@
 
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
-from pynicotine.utils import human_speed
 
 
 class Plugin(BasePlugin):
@@ -35,46 +34,132 @@ class Plugin(BasePlugin):
         super().__init__(*args, **kwargs)
 
         self.settings = {
+            "open_private_chat": False,
             "no_files_ban": True,
+            "no_files_pm": True,
+            "no_files_message": "",
             "all_privates_ban": True,
+            "all_privates_pm": True,
+            "all_privates_message": "",
             "empty_folders_ban": True,
+            "empty_folders_pm": True,
+            "empty_folders_message": "",
             "num_files": 10,
-            "num_folders": 1,
+            "num_files_ban": False,
+            "num_files_pm": False,
+            "num_files_message": "",
+            "num_folders": 10,
+            "num_folders_ban": False,
+            "num_folders_pm": False,
+            "num_folders_message": "",
             "percent_threshold": 1,
+            "percent_threshold_ban": False,
+            "percent_threshold_pm": False,
+            "percent_threshold_message": "",
             "share_size": 10,
             "share_size_unit": "MB",
-            "send_message": False,
-            "open_private_chat": False,
-            "enable_ban": False,
+            "share_size_ban": False,
+            "share_size_pm": False,
+            "share_size_message": "",
         }
         self.metasettings = {
+            "open_private_chat": {
+                "description": "Open chat tabs when sending messages?",
+                "type": "bool",
+            },
+            # no files options
             "no_files_ban": {
                 "description": "Ban users with 0 shares?",
                 "type": "bool",
             },
-            "all_privates_ban": {
-                "description": "Ban users who have all shares locked?",
+            "no_files_pm": {
+                "description": "Send a message to users with 0 shares?",
                 "type": "bool",
             },
+            "no_files_message": {
+                "description": "0 shares message to be sent:",
+                "type": "string"
+            },
+            # all private files options
+            "all_privates_ban": {
+                "description": "Ban users with all shares locked?",
+                "type": "bool",
+            },
+            "all_privates_pm": {
+                "description": "Send a message to users with all shares locked?",
+                "type": "bool",
+            },
+            "all_privates_message": {
+                "description": "Message to send for fully locked shares:",
+                "type": "string"
+            },
+            # empty folders options
             "empty_folders_ban": {
                 "description": "Ban users with empty shared folders?",
                 "type": "bool",
             },
+            "empty_folders_pm": {
+                "description": "Send a message to users empty shared folders?",
+                "type": "bool",
+            },
+            "empty_folders_message": {
+                "description": "Message to send for empty shared folders:",
+                "type": "string"
+            },
+            # num file options
             "num_files": {
                 "description": "Minimum number of shared files:",
                 "type": "int",
                 "minimum": 0,
             },
+            "num_files_ban": {
+                "description": "Apply a ban for file counts?",
+                "type": "bool",
+            },
+            "num_files_pm": {
+                "description": "Send a message to users below file threshold?",
+                "type": "bool",
+            },
+            "num_files_message": {
+                "description": "Message to send to users below file threshold:",
+                "type": "string"
+            },
+            # num folder options
             "num_folders": {
                 "description": "Minimum number of shared folders:",
                 "type": "int",
                 "minimum": 0,
             },
+            "num_folders_ban": {
+                "description": "Apply a ban for folder counts?",
+                "type": "bool",
+            },
+            "num_folders_pm": {
+                "description": "Send a message to users below folder threshold?",
+                "type": "bool",
+            },
+            "num_folders_message": {
+                "description": "Message to send to users below folder threshold:",
+                "type": "string"
+            },
+            # percentage options
             "percent_threshold": {
                 "description": "Max percentage of locked/private folders:",
                 "type": "int",
                 "minimum": 1,
                 "maximum": 99,
+            },
+            "percent_threshold_ban": {
+                "description": "Apply a ban for locked/private counts?",
+                "type": "bool",
+            },
+            "percent_threshold_pm": {
+                "description": "Send a message about locked/private counts?",
+                "type": "bool",
+            },
+            "percent_threshold_message": {
+                "description": "Message to send to about locked/private:",
+                "type": "string"
             },
             "share_size": {
                 "description": "Size of share required:",
@@ -87,17 +172,17 @@ class Plugin(BasePlugin):
                 "type": "dropdown",
                 "options": ("MB", "GB"),
             },
-            "send_message": {
-                "description": "Send a private message to detected leechers?",
+            "share_size_ban": {
+                "description": "Apply a ban for share sizes?",
                 "type": "bool",
             },
-            "open_private_chat": {
-                "description": "Open chat tabs when sending messages?",
+            "share_size_pm": {
+                "description": "Send a message about share sizes?",
                 "type": "bool",
             },
-            "enable_ban": {
-                "description": "Apply a ban to detected users?",
-                "type": "bool",
+            "share_size_message": {
+                "description": "Message to send to about share sizes:",
+                "type": "string"
             },
         }
         self.probed_users = {}
@@ -151,6 +236,16 @@ class Plugin(BasePlugin):
         percent = round((part / whole) * 100)
         return percent
 
+    # ban a user
+    def ld_ban_user(self, user, message):
+        self.core.network_filter.ban_user(user)
+        self.log("User %s has been banned")
+
+    # message a user
+    def ld_message_user(self, user, message):
+        self.send_private(user, message, show_ui=self.settings["open_private_chat"], switch_page=False)
+        self.log("Message sent to %s: %s", user, message)
+
     # an upload has been requested
     def upload_queued_notification(self, user, virtual_path, real_path):
         # user already dealt with
@@ -163,12 +258,6 @@ class Plugin(BasePlugin):
         self.core.userbrowse.browse_user(user)
         # log it
         self.log("User %s requested an upload - browsing shares...", user)
-
-    # ban a user and message them with a reasom
-    def ban_with_reason(self, user, reason):
-        self.core.network_filter.ban_user(user)
-        self.send_private(user, reason, show_ui=self.settings["open_private_chat"], switch_page=False)
-        self.log("User %s has been banned. Message sent: %s", user, reason)
 
     # receive stats for a user
     def user_stats_notification(self, user, stats):
@@ -248,42 +337,50 @@ class Plugin(BasePlugin):
             self.log("User %s is OK.", user)
             return
 
-        # stats are not good
+        # non-regular sharing conditions
         # user is not sharing anything
         if not files and not folders:
-            self.log("User %s no files or folders.", user)
+            self.log("User %s shares no files or folders.", user)
+            # close down the tab for the browsed user
+            self.core.userbrowse.remove_user(user)
             # if a ban is required
             if self.settings["no_files_ban"] is True:
-                ban_reason = "[Auto-Message] You are not sharing any files"
-                self.ban_with_reason(user, ban_reason)
-                return
+                self.ld_ban_user(user)
+            if self.settings["no_files_pm"] is True:
+                message = "[Auto-Message] You have no shared files"
+                self.ld_message_user(user, message)
             else:
                 return
 
         # user has files but all folders are locked/private
         if files > 0 and folders == private_folders:
-            self.log(
-                "User %s has shared files but all of their folders are private.", user
-            )
+            self.log("User %s has shares files but all of their folders are private.", user)
+            # close down the tab for the browsed user
+            self.core.userbrowse.remove_user(user)
             # if a ban is required
             if self.settings["all_privates_ban"] is True:
-                ban_reason = "[Auto-Message] All your files are private"
-                self.ban_with_reason(user, ban_reason)
-                return
+                self.ld_ban_user(user)
+            if self.settings["all_privates_pm"] is True:
+                message = "[Auto-Message] All your files are private"
+                self.ld_message_user(user, message)
             else:
                 return
 
         # user no files but has empty shared folders
         if not files and folders > 0:
-            self.log("User %s no files, only empty folders", user)
+            self.log("User %s shares no files, only empty folders.", user)
+            # close down the tab for the browsed user
+            self.core.userbrowse.remove_user(user)
             # if a ban is required
             if self.settings["empty_folders_ban"] is True:
-                ban_reason = "[Auto-Message] All your shared folders are empty"
-                self.ban_with_reason(user, ban_reason)
-                return
+                self.ld_ban_user(user)
+            if self.settings["empty_folders_pm"] is True:
+                message = "[Auto-Message] All your shared folders are empty"
+                self.ld_message_user(user, message)
             else:
                 return
 
+        # regular sharing conditions
         # files check
         if files <= self.settings["num_files"]:
             self.log(
@@ -295,14 +392,11 @@ class Plugin(BasePlugin):
                 ),
             )
             # is messaging enabled?
-            if self.settings["send_message"] is True:
+            if self.settings["num_files_pm"] is True:
                 file_msg = "[Auto-Message] Please consider adding more shared files"
-                self.send_private(
-                    user,
-                    file_msg,
-                    show_ui=self.settings["open_private_chat"],
-                    switch_page=False,
-                )
+                self.ld_message_user(user, file_msg)
+            if self.settings["num_files_ban"] is True:
+                self.ld_ban_user(user)
 
         # folder check
         if folders < self.settings["num_folders"]:
@@ -315,14 +409,11 @@ class Plugin(BasePlugin):
                 ),
             )
             # is messaging enabled?
-            if self.settings["send_message"] is True:
+            if self.settings["num_folders_pm"] is True:
                 folder_msg = "[Auto-Message] Please consider adding more shared folders"
-                self.send_private(
-                    user,
-                    folder_msg,
-                    show_ui=self.settings["open_private_chat"],
-                    switch_page=False,
-                )
+                self.ld_message_user(user, folder_msg)
+            if self.settings["num_folders_ban"] is True:
+                self.ld_ban_user(user)
 
         # percentage check
         if locked_percent > self.settings["percent_threshold"]:
@@ -335,14 +426,11 @@ class Plugin(BasePlugin):
                 ),
             )
             # is messaging enabled?
-            if self.settings["send_message"] is True:
-                percent_msg = "[Auto-Message] You have too many locked/private files."
-                self.send_private(
-                    user,
-                    percent_msg,
-                    show_ui=self.settings["open_private_chat"],
-                    switch_page=False,
-                )
+            if self.settings["percent_threshold_pm"] is True:
+                percent_msg = "[Auto-Message] You have too many locked/private folders."
+                self.ld_message_user(user, percent_msg)
+            if self.settings["percent_threshold_ban"] is True:
+                self.ld_ban_user(user)
 
         # share size check
         if converted_share < self.settings["share_size"]:
@@ -355,16 +443,8 @@ class Plugin(BasePlugin):
                 ),
             )
             # is messaging enabled?
-            if self.settings["send_message"] is True:
-                data_msg = "[Auto-Message] Please consider sharing more"
-                self.send_private(
-                    user,
-                    data_msg,
-                    show_ui=self.settings["open_private_chat"],
-                    switch_page=False,
-                )
-
-        # if ban is enabled
-        if self.settings["enable_ban"] is True:
-            self.core.network_filter.ban_user(user)
-            self.log("User %s has been banned", user)
+            if self.settings["share_size_pm"] is True:
+                data_msg = "[Auto-Message] You are not sharing enough media"
+                self.ld_message_user(user, data_msg)
+            if self.settings["share_size_ban"] is True:
+                self.ld_ban_user(user)
