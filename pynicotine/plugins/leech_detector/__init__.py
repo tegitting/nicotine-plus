@@ -326,9 +326,9 @@ class Plugin(BasePlugin):
             self.probed_downloaders[user] = "OK"
 
             # if they exist in the leechers list
-            if user in self.settings["detected_leechers"]:
-                # and remove them
-                self.settings["detected_leechers"].remove(user)
+            # if user in self.settings["detected_leechers"]:
+            # and remove them
+            # self.settings["detected_leechers"].remove(user)
 
             # log progress
             if user in self.core.buddies.users:
