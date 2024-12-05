@@ -231,14 +231,20 @@ class Plugin(BasePlugin):
         return percent
 
     # ban a user
-    def ld_ban_user(self, user, message):
+    def ld_ban_user(self, user):
         self.core.network_filter.ban_user(user)
-        self.log("User %s has been banned")
+        self.log("User %s has been banned", user)
 
     # message a user
     def ld_message_user(self, user, message):
         self.send_private(user, message, show_ui=self.settings["open_private_chat"], switch_page=False)
-        self.log("Message sent to %s was %s", user, message)
+        self.log(
+            "Message sent to %s was %s",
+            (
+                user,
+                message,
+            ),
+        )
 
     # an upload has been requested
     def upload_queued_notification(self, user, virtual_path, real_path):
