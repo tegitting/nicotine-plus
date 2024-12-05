@@ -443,11 +443,11 @@ class Plugin(BasePlugin):
         if converted_share < self.settings["share_size"]:
             # convert share size to the chosen conversion metric
             if self.settings["share_size_unit"] == "MB":
-                required_share = self.convert_megs_to_bytes(int(self.settings["share_size"]))
+                required_share = int(self.convert_megs_to_bytes(self.settings["share_size"]))
     
             # convert share size to the chosen conversion metric
             if self.settings["share_size_unit"] == "GB":
-                required_share = self.convert_gigs_to_bytes(int(self.settings["share_size"]))
+                required_share = int(self.convert_gigs_to_bytes(self.settings["share_size"]))
             self.log(
                 "User %s shares %s but the plugin requires %s",
                 (
