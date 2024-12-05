@@ -5,7 +5,7 @@ The current stable version of Nicotine+ is available at [DOWNLOADS.md](doc/DOWNL
 You can run the latest unstable build of Nicotine+ to test recent changes and bug fixes, see [TESTING.md](doc/TESTING.md).
 
 
-## Version 3.3.7 (Release Candidate 1)
+## Version 3.3.7 (Release Candidate 2)
 
 ### Changes
 
@@ -13,6 +13,7 @@ You can run the latest unstable build of Nicotine+ to test recent changes and bu
  * Automatically reconnect to the server when changing listening port
  * Always show number of upload slots on user profiles
  * Windows: Update Python from 3.11 to 3.12
+ * macOS: Drop support for macOS Monterey due to reaching EOL
 
 ### Corrections
 
