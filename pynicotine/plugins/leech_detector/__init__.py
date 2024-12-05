@@ -435,11 +435,12 @@ class Plugin(BasePlugin):
         # share size check
         if converted_share < self.settings["share_size"]:
             self.log(
-                "User %s shares %s but the plugin requires %s" + self.settings["share_unit"],
+                "User %s shares %s but the plugin requires %s" + "%s",
                 (
                     user,
                     human_size(total_shared),
                     self.settings["share_size"],
+                    self.settings["share_unit"],
                 ),
             )
             # is messaging enabled?
