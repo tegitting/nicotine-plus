@@ -27,7 +27,7 @@ class Plugin(BasePlugin):
     #    "%files%": "num_files",
     #    "%folders%": "num_folders",
     #    "%percent%": "percent_threshold",
-    #}
+    # }
 
     def __init__(self, *args, **kwargs):
 
