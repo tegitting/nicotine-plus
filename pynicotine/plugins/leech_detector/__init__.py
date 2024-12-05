@@ -23,12 +23,6 @@ from pynicotine.utils import human_size
 
 class Plugin(BasePlugin):
 
-    # PLACEHOLDERS = {
-    #    "%files%": "num_files",
-    #    "%folders%": "num_folders",
-    #    "%percent%": "percent_threshold",
-    #}
-
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
