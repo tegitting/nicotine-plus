@@ -225,6 +225,13 @@ class Plugin(BasePlugin):
     def convert_bytes_to_gigs(self, bytes_value):
         return round(bytes_value / 1073741824)
 
+    def convert_megs_to_bytes(self, megs_value):
+        return round(megs_value * 1048576)
+
+    # convert bytes to gbs
+    def convert_gigs_to_bytes(self, gigs_value):
+        return round(gigs_value * 1073741824)
+
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
         percent = round((part / whole) * 100)
@@ -434,13 +441,19 @@ class Plugin(BasePlugin):
 
         # share size check
         if converted_share < self.settings["share_size"]:
+            # convert share size to the chosen conversion metric
+            if self.settings["share_size_unit"] == "MB":
+                required_share = self.convert_megs_to_bytes(int(self.settings["share_size"]))
+    
+            # convert share size to the chosen conversion metric
+            if self.settings["share_size_unit"] == "GB":
+                required_share = self.convert_gigs_to_bytes(int(self.settings["share_size"]))
             self.log(
-                "User %s shares %s but the plugin requires %s" + "%s",
+                "User %s shares %s but the plugin requires %s",
                 (
                     user,
                     human_size(total_shared),
-                    self.settings["share_size"],
-                    self.settings["share_unit"],
+                    human_size(required_share),
                 ),
             )
             # is messaging enabled?
