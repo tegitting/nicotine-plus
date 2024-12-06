@@ -226,11 +226,11 @@ class Plugin(BasePlugin):
         return round(bytes_value / 1073741824)
 
     def convert_megs_to_bytes(self, megs_value):
-        return round(megs_value * 1048576)
+        return megs_value * 1048576
 
     # convert bytes to gbs
     def convert_gigs_to_bytes(self, gigs_value):
-        return round(gigs_value * 1073741824)
+        return gigs_value * 1073741824
 
     # function to calculate percentage
     def calculate_percentage(self, part, whole):
@@ -317,10 +317,11 @@ class Plugin(BasePlugin):
         # convert share size to the chosen conversion metric
         if self.settings["share_size_unit"] == "MB":
             converted_share = self.convert_bytes_to_megs(int(total_shared))
-
+            required_share = self.convert_megs_to_bytes(self.settings["share_size"])
         # convert share size to the chosen conversion metric
         if self.settings["share_size_unit"] == "GB":
             converted_share = self.convert_bytes_to_gigs(int(total_shared))
+            required_share = self.convert_gigs_to_bytes(self.settings["share_size"])
 
         # if stats are good
         if (
@@ -441,13 +442,6 @@ class Plugin(BasePlugin):
 
         # share size check
         if converted_share < self.settings["share_size"]:
-            # convert share size to the chosen conversion metric
-            if self.settings["share_size_unit"] == "MB":
-                required_share = int(self.convert_megs_to_bytes(self.settings["share_size"]))
-    
-            # convert share size to the chosen conversion metric
-            if self.settings["share_size_unit"] == "GB":
-                required_share = int(self.convert_gigs_to_bytes(self.settings["share_size"]))
             self.log(
                 "User %s shares %s but the plugin requires %s",
                 (
