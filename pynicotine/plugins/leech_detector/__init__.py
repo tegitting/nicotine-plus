@@ -333,11 +333,6 @@ class Plugin(BasePlugin):
             # mark the user as OK
             self.probed_downloaders[user] = "OK"
 
-            # if they exist in the leechers list
-            # if user in self.settings["detected_leechers"]:
-            # and remove them
-            # self.settings["detected_leechers"].remove(user)
-
             # log progress
             if user in self.core.buddies.users:
                 self.log("Buddy %s is OK.", user)
@@ -355,10 +350,9 @@ class Plugin(BasePlugin):
             if self.settings["no_files_ban"] is True:
                 self.ld_ban_user(user)
             if self.settings["no_files_pm"] is True:
-                message = "[Auto-Message] You have no shared files"
+                message = "[Auto-Message] You must have shared files to download from me"
                 self.ld_message_user(user, message)
-            else:
-                return
+            return
 
         # user has files but all folders are locked/private
         if files > 0 and folders == private_folders:
@@ -369,10 +363,9 @@ class Plugin(BasePlugin):
             if self.settings["all_privates_ban"] is True:
                 self.ld_ban_user(user)
             if self.settings["all_privates_pm"] is True:
-                message = "[Auto-Message] All your files are private"
+                message = "[Auto-Message] You cannot download from me when your files are all private"
                 self.ld_message_user(user, message)
-            else:
-                return
+            return
 
         # user no files but has empty shared folders
         if not files and folders > 0:
@@ -383,10 +376,9 @@ class Plugin(BasePlugin):
             if self.settings["empty_folders_ban"] is True:
                 self.ld_ban_user(user)
             if self.settings["empty_folders_pm"] is True:
-                message = "[Auto-Message] All your shared folders are empty"
+                message = "[Auto-Message] You cannot download from me when your shared folders are empty"
                 self.ld_message_user(user, message)
-            else:
-                return
+            return
 
         # regular sharing conditions
         # files check
