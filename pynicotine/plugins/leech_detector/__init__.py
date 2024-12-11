@@ -322,6 +322,8 @@ class Plugin(BasePlugin):
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
 
+        converted_share = 0
+        required_share = 0
         # convert share size to the chosen conversion metric
         if self.settings["share_size_unit"] == "MB":
             converted_share = self.convert_bytes_to_megs(int(total_shared))
