@@ -188,6 +188,7 @@ class Plugin(BasePlugin):
         min_num_folders = self.metasettings["num_folders"]["minimum"]
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
         share_size = self.metasettings["share_size"]["minimum"]
+        req_share = 0
 
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
