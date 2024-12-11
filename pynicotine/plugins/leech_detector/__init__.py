@@ -201,20 +201,24 @@ class Plugin(BasePlugin):
         if self.settings["share_size"] < share_size:
             self.settings["share_size"] = share_size
 
-        self.log(
-            "NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!"
-        )
+        if self.settings["share_size_unit"] == "MB":
+            req_share = self.convert_megs_to_bytes(self.settings["share_size"])
+
+        if self.settings["share_size_unit"] == "GB":
+            req_share = self.convert_gigs_to_bytes(self.settings["share_size"])
+
         self.log(
             "Users require %d files, %d folders with less than %d"
-            + "%% locked and at least %s"
-            + "%s of data to be shared.",
+            + "%% locked and at least %d of data to be shared.",
             (
                 self.settings["num_files"],
                 self.settings["num_folders"],
                 self.settings["percent_threshold"],
-                self.settings["share_size"],
-                self.settings["share_size_unit"],
+                human_size(req_share),
             ),
+        )
+        self.log(
+            "NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!"
         )
 
     # convert bytes to mbs
@@ -225,10 +229,11 @@ class Plugin(BasePlugin):
     def convert_bytes_to_gigs(self, bytes_value):
         return round(bytes_value / 1073741824)
 
+    # convert megs to bytes
     def convert_megs_to_bytes(self, megs_value):
         return megs_value * 1048576
 
-    # convert bytes to gbs
+    # convert gigs to bytes
     def convert_gigs_to_bytes(self, gigs_value):
         return gigs_value * 1073741824
 
@@ -245,6 +250,7 @@ class Plugin(BasePlugin):
     # message a user
     def ld_message_user(self, user, message):
         self.send_private(user, message, show_ui=self.settings["open_private_chat"], switch_page=False)
+        # log what we sent
         self.log(
             "Message sent to %s was %s",
             (
@@ -258,6 +264,7 @@ class Plugin(BasePlugin):
         # user already dealt with
         if user in self.probed_downloaders:
             return
+
         # record the user as a downloader
         self.probed_downloaders[user] = "downloader"
 
@@ -269,7 +276,7 @@ class Plugin(BasePlugin):
     # receive stats for a user
     def user_stats_notification(self, user, stats):
         # only process the notification when private_dirs is in stats
-        # we only get this in our customised userbrowse function
+        # we only get this in the customised userbrowse function
         if stats.get("private_dirs") is not None:
             # create dictionary entry
             self.probed_users[user] = "processing"
@@ -323,14 +330,14 @@ class Plugin(BasePlugin):
             converted_share = self.convert_bytes_to_gigs(int(total_shared))
             required_share = self.convert_gigs_to_bytes(self.settings["share_size"])
 
-        # if stats are good
+        # check stats
         if (
             files >= self.settings["num_files"]
             and folders >= self.settings["num_folders"]
             and locked_percent < self.settings["percent_threshold"]
             and converted_share > self.settings["share_size"]
         ):
-            # mark the user as OK
+            # stats are goo - mark the user as OK
             self.probed_downloaders[user] = "OK"
 
             # log progress
