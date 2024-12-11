@@ -203,19 +203,19 @@ class Plugin(BasePlugin):
             self.settings["share_size"] = share_size
 
         if self.settings["share_size_unit"] == "MB":
-            req_share = self.convert_megs_to_bytes(self.settings["share_size"])
+            req_share = human_size(self.convert_megs_to_bytes(self.settings["share_size"]))
 
         if self.settings["share_size_unit"] == "GB":
-            req_share = self.convert_gigs_to_bytes(self.settings["share_size"])
+            req_share = human_size(self.convert_gigs_to_bytes(self.settings["share_size"]))
 
         self.log(
             "Users require %d files, %d folders with less than %d"
-            + "%% locked and at least %d of data to be shared.",
+            + "%% locked and at least %s of data to be shared.",
             (
                 self.settings["num_files"],
                 self.settings["num_folders"],
                 self.settings["percent_threshold"],
-                human_size(int(req_share)),
+                req_share,
             ),
         )
         self.log(
