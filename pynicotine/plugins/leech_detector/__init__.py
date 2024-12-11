@@ -215,7 +215,7 @@ class Plugin(BasePlugin):
                 self.settings["num_files"],
                 self.settings["num_folders"],
                 self.settings["percent_threshold"],
-                human_size(req_share),
+                human_size(int(req_share)),
             ),
         )
         self.log(
