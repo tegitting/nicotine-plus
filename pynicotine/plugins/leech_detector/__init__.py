@@ -31,30 +31,30 @@ class Plugin(BasePlugin):
             "open_private_chat": False,
             "no_files_ban": True,
             "no_files_pm": True,
-            "no_files_message": "",
+            "no_files_message": "You must have shared files to download from me",
             "all_privates_ban": True,
             "all_privates_pm": True,
-            "all_privates_message": "",
+            "all_privates_message": "You cannot download from me when your files are all private",
             "empty_folders_ban": True,
             "empty_folders_pm": True,
-            "empty_folders_message": "",
+            "empty_folders_message": "You cannot download from me when your shared folders are empty",
             "num_files": 10,
             "num_files_ban": False,
             "num_files_pm": False,
-            "num_files_message": "",
+            "num_files_message": "Please consider adding more shared files",
             "num_folders": 10,
             "num_folders_ban": False,
             "num_folders_pm": False,
-            "num_folders_message": "",
+            "num_folders_message": "Please consider having more shared folders",
             "percent_threshold": 1,
             "percent_threshold_ban": False,
             "percent_threshold_pm": False,
-            "percent_threshold_message": "",
+            "percent_threshold_message": "You have too many locked/private folders",
             "share_size": 10,
             "share_size_unit": "MB",
             "share_size_ban": False,
             "share_size_pm": False,
-            "share_size_message": "",
+            "share_size_message": "You are not sharing enough media",
         }
         self.metasettings = {
             "open_private_chat": {
@@ -179,7 +179,6 @@ class Plugin(BasePlugin):
                 "type": "string"
             },
         }
-        self.probed_users = {}
         self.probed_downloaders = {}
 
     # plugin loaded notifications
@@ -279,8 +278,6 @@ class Plugin(BasePlugin):
         # only process the notification when private_dirs is in stats
         # we only get this in the customised userbrowse function
         if stats.get("private_dirs") is not None:
-            # create dictionary entry
-            self.probed_users[user] = "processing"
             files = int(stats.get("files"))
             folders = int(stats.get("dirs"))
             private_folders = int(stats.get("private_dirs"))
@@ -322,8 +319,8 @@ class Plugin(BasePlugin):
         self, user, files, folders, private_folders, locked_percent, total_shared
     ):
 
-        converted_share = 0
         required_share = 0
+        converted_share = 0
         # convert share size to the chosen conversion metric
         if self.settings["share_size_unit"] == "MB":
             converted_share = self.convert_bytes_to_megs(int(total_shared))
@@ -360,8 +357,11 @@ class Plugin(BasePlugin):
             if self.settings["no_files_ban"] is True:
                 self.ld_ban_user(user)
             if self.settings["no_files_pm"] is True:
-                message = "[Auto-Message] You must have shared files to download from me"
-                self.ld_message_user(user, message)
+                if not self.settings["no_files_message"]:
+                    self.log("[NO-FILES] There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["no_files_message"]
+                    self.ld_message_user(user, message)
             return
 
         # user has files but all folders are locked/private
@@ -373,8 +373,11 @@ class Plugin(BasePlugin):
             if self.settings["all_privates_ban"] is True:
                 self.ld_ban_user(user)
             if self.settings["all_privates_pm"] is True:
-                message = "[Auto-Message] You cannot download from me when your files are all private"
-                self.ld_message_user(user, message)
+                if not self.settings["all_privates_message"]:
+                    self.log("[ALL-PRIVATES] - There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["all_privates_message"]
+                    self.ld_message_user(user, message)
             return
 
         # user no files but has empty shared folders
@@ -386,8 +389,11 @@ class Plugin(BasePlugin):
             if self.settings["empty_folders_ban"] is True:
                 self.ld_ban_user(user)
             if self.settings["empty_folders_pm"] is True:
-                message = "[Auto-Message] You cannot download from me when your shared folders are empty"
-                self.ld_message_user(user, message)
+                if not self.settings["empty_folders_message"]:
+                    self.log("[ALL-PRIVATES] - There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["empty_folders_message"]
+                    self.ld_message_user(user, message)
             return
 
         # regular sharing conditions
@@ -401,12 +407,18 @@ class Plugin(BasePlugin):
                     self.settings["num_files"],
                 ),
             )
-            # is messaging enabled?
-            if self.settings["num_files_pm"] is True:
-                file_msg = "[Auto-Message] Please consider adding more shared files"
-                self.ld_message_user(user, file_msg)
+            # is banning enabled?
             if self.settings["num_files_ban"] is True:
                 self.ld_ban_user(user)
+            # is messaging enabled?
+            if self.settings["num_files_pm"] is True:
+                if not self.settings["num_files_message"]:
+                    self.log("[FILE-COUNT] - There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["num_files_message"]
+                    message.replace("%files%", files)
+                    self.ld_message_user(user, message)
+            return
 
         # folder check
         if folders < self.settings["num_folders"]:
@@ -418,12 +430,17 @@ class Plugin(BasePlugin):
                     self.settings["num_folders"],
                 ),
             )
-            # is messaging enabled?
-            if self.settings["num_folders_pm"] is True:
-                folder_msg = "[Auto-Message] Please consider adding more shared folders"
-                self.ld_message_user(user, folder_msg)
+            # is ban enabled?
             if self.settings["num_folders_ban"] is True:
                 self.ld_ban_user(user)
+            # is messaging enabled?
+            if self.settings["num_folders_pm"] is True:
+                if not self.settings["num_folders_message"]:
+                    self.log("[FOLDER-COUNT] - There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["num_folders_message"]
+                    self.ld_message_user(user, message)
+            return
 
         # percentage check
         if locked_percent > self.settings["percent_threshold"]:
@@ -435,12 +452,17 @@ class Plugin(BasePlugin):
                     self.settings["percent_threshold"],
                 ),
             )
-            # is messaging enabled?
-            if self.settings["percent_threshold_pm"] is True:
-                percent_msg = "[Auto-Message] You have too many locked/private folders."
-                self.ld_message_user(user, percent_msg)
+            # is ban enabled?
             if self.settings["percent_threshold_ban"] is True:
                 self.ld_ban_user(user)
+            # is messaging enabled?
+            if self.settings["percent_threshold_pm"] is True:
+                if not self.settings["percent_threshold_message"]:
+                    self.log("[LOCKED-PERCENT] - There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["percent_threshold_message"]
+                    self.ld_message_user(user, message)
+            return
 
         # share size check
         if converted_share < self.settings["share_size"]:
@@ -452,9 +474,14 @@ class Plugin(BasePlugin):
                     human_size(required_share),
                 ),
             )
-            # is messaging enabled?
-            if self.settings["share_size_pm"] is True:
-                data_msg = "[Auto-Message] You are not sharing enough media"
-                self.ld_message_user(user, data_msg)
+            # is ban enabled?
             if self.settings["share_size_ban"] is True:
                 self.ld_ban_user(user)
+            # is messaging enabled?
+            if self.settings["share_size_pm"] is True:
+                if not self.settings["share_size_message"]:
+                    self.log("[SHARE-SIZE] - There is no message configured in plugin")
+                else:
+                    message = "[Auto-Message] " + self.settings["share_size_message"]
+                    self.ld_message_user(user, message)
+            return
