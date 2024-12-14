@@ -72,7 +72,7 @@ class Plugin(BasePlugin):
             },
             "no_files_message": {
                 "description": "0 shares message to be sent:",
-                "type": "string"
+                "type": "string",
             },
             # all private files options
             "all_privates_ban": {
@@ -85,7 +85,7 @@ class Plugin(BasePlugin):
             },
             "all_privates_message": {
                 "description": "Message to send for fully locked shares:",
-                "type": "string"
+                "type": "string",
             },
             # empty folders options
             "empty_folders_ban": {
@@ -98,7 +98,7 @@ class Plugin(BasePlugin):
             },
             "empty_folders_message": {
                 "description": "Message to send for empty shared folders:",
-                "type": "string"
+                "type": "string",
             },
             # num file options
             "num_files": {
@@ -116,7 +116,7 @@ class Plugin(BasePlugin):
             },
             "num_files_message": {
                 "description": "Message to send to users below file threshold:",
-                "type": "string"
+                "type": "string",
             },
             # num folder options
             "num_folders": {
@@ -134,7 +134,7 @@ class Plugin(BasePlugin):
             },
             "num_folders_message": {
                 "description": "Message to send to users below folder threshold:",
-                "type": "string"
+                "type": "string",
             },
             # percentage options
             "percent_threshold": {
@@ -153,7 +153,7 @@ class Plugin(BasePlugin):
             },
             "percent_threshold_message": {
                 "description": "Message to send to about locked/private:",
-                "type": "string"
+                "type": "string",
             },
             "share_size": {
                 "description": "Size of share required:",
@@ -176,7 +176,7 @@ class Plugin(BasePlugin):
             },
             "share_size_message": {
                 "description": "Message to send to about share sizes:",
-                "type": "string"
+                "type": "string",
             },
         }
         self.probed_downloaders = {}
