@@ -31,30 +31,30 @@ class Plugin(BasePlugin):
             "open_private_chat": False,
             "no_files_ban": True,
             "no_files_pm": True,
-            "no_files_message": "You must have shared files to download from me",
+            "no_files_message": "",
             "all_privates_ban": True,
             "all_privates_pm": True,
-            "all_privates_message": "You cannot download from me when your files are all private",
+            "all_privates_message": "",
             "empty_folders_ban": True,
             "empty_folders_pm": True,
-            "empty_folders_message": "You cannot download from me when your shared folders are empty",
+            "empty_folders_message": "",
             "num_files": 10,
             "num_files_ban": False,
             "num_files_pm": False,
-            "num_files_message": "Please consider adding more shared files",
+            "num_files_message": "",
             "num_folders": 10,
             "num_folders_ban": False,
             "num_folders_pm": False,
-            "num_folders_message": "Please consider having more shared folders",
+            "num_folders_message": "",
             "percent_threshold": 1,
             "percent_threshold_ban": False,
             "percent_threshold_pm": False,
-            "percent_threshold_message": "You have too many locked/private folders",
+            "percent_threshold_message": "",
             "share_size": 10,
             "share_size_unit": "MB",
             "share_size_ban": False,
             "share_size_pm": False,
-            "share_size_message": "You are not sharing enough media",
+            "share_size_message": "",
         }
         self.metasettings = {
             "open_private_chat": {
@@ -188,6 +188,23 @@ class Plugin(BasePlugin):
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
         share_size = self.metasettings["share_size"]["minimum"]
         req_share = 0
+        
+        # try and populate the text boxes
+        if not self.settings["no_files_message"]:
+            self.settings["no_files_message"] = "You need shared files to download from me"
+        if not self.settings["all_privates_message"]:
+            self.settings["all_privates_message"] = "You cannot download from me when your files are all private"
+        if not self.settings["empty_folders_message"]:
+            self.settings["empty_folders_message"] = "You cannot download from me when your shared folders are empty"
+        if not self.settings["num_files_message"]:
+            self.settings["num_files_message"] = "Please consider adding more shared files"
+        if not self.settings["num_folders_message"]:
+            self.settings["num_folders_message"] = "Please consider having more shared folders"
+        if not self.settings["percent_threshold_message"]:
+            self.settings["percent_threshold_message"] = "You have too many locked/private folders"
+        if not self.settings["share_size_message"]:
+            self.settings["share_size_message"] = "You are not sharing enough media"
+
 
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
