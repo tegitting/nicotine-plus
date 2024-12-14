@@ -67,11 +67,8 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "no_files_pm": {
-                "description": "Send a message to users with 0 shares?",
+                "description": "Send message to users with 0 shares?",
                 "type": "bool",
-            },
-            "no_files_label": {
-                "description": "0 shares message to be sent:",
             },
             "no_files_message": {
                 "type": "string",
@@ -86,7 +83,6 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "all_privates_message": {
-                "description": "Message to send for fully locked shares:",
                 "type": "string",
             },
             # empty folders options
@@ -99,7 +95,6 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "empty_folders_message": {
-                "description": "Message to send for empty shared folders:",
                 "type": "string",
             },
             # num file options
@@ -117,7 +112,6 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "num_files_message": {
-                "description": "Message to send to users below file threshold:",
                 "type": "string",
             },
             # num folder options
@@ -135,7 +129,6 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "num_folders_message": {
-                "description": "Message to send to users below folder threshold:",
                 "type": "string",
             },
             # percentage options
@@ -154,7 +147,6 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "percent_threshold_message": {
-                "description": "Message to send to about locked/private:",
                 "type": "string",
             },
             "share_size": {
@@ -177,7 +169,6 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "share_size_message": {
-                "description": "Message to send to about share sizes:",
                 "type": "string",
             },
         }
@@ -194,19 +185,24 @@ class Plugin(BasePlugin):
         # try and populate the text boxes
         if not self.settings["no_files_message"]:
             self.settings["no_files_message"] = "You need shared files to download from me"
+
         if not self.settings["all_privates_message"]:
             self.settings["all_privates_message"] = "You cannot download from me when your files are all private"
+
         if not self.settings["empty_folders_message"]:
             self.settings["empty_folders_message"] = "You cannot download from me when your shared folders are empty"
+
         if not self.settings["num_files_message"]:
             self.settings["num_files_message"] = "Please consider adding more shared files"
+
         if not self.settings["num_folders_message"]:
             self.settings["num_folders_message"] = "Please consider having more shared folders"
+
         if not self.settings["percent_threshold_message"]:
             self.settings["percent_threshold_message"] = "You have too many locked/private folders"
+
         if not self.settings["share_size_message"]:
             self.settings["share_size_message"] = "You are not sharing enough media"
-
 
         if self.settings["num_files"] < min_num_files:
             self.settings["num_files"] = min_num_files
