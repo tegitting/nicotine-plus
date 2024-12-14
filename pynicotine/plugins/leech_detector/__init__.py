@@ -70,8 +70,10 @@ class Plugin(BasePlugin):
                 "description": "Send a message to users with 0 shares?",
                 "type": "bool",
             },
+            "no_files_label": {
+                "description": "0 shares message to be sent:",
+            },
             "no_files_message": {
-                "description": "0 shares message to be sent:\n",
                 "type": "string",
             },
             # all private files options
@@ -84,7 +86,7 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "all_privates_message": {
-                "description": "Message to send for fully locked shares:\n",
+                "description": "Message to send for fully locked shares:",
                 "type": "string",
             },
             # empty folders options
@@ -97,7 +99,7 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "empty_folders_message": {
-                "description": "Message to send for empty shared folders:\n",
+                "description": "Message to send for empty shared folders:",
                 "type": "string",
             },
             # num file options
@@ -115,7 +117,7 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "num_files_message": {
-                "description": "Message to send to users below file threshold:\n",
+                "description": "Message to send to users below file threshold:",
                 "type": "string",
             },
             # num folder options
@@ -133,7 +135,7 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "num_folders_message": {
-                "description": "Message to send to users below folder threshold:\n",
+                "description": "Message to send to users below folder threshold:",
                 "type": "string",
             },
             # percentage options
@@ -152,7 +154,7 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "percent_threshold_message": {
-                "description": "Message to send to about locked/private:\n",
+                "description": "Message to send to about locked/private:",
                 "type": "string",
             },
             "share_size": {
@@ -175,7 +177,7 @@ class Plugin(BasePlugin):
                 "type": "bool",
             },
             "share_size_message": {
-                "description": "Message to send to about share sizes:\n",
+                "description": "Message to send to about share sizes:",
                 "type": "string",
             },
         }
