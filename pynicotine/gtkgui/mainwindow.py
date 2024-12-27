@@ -59,6 +59,7 @@ from pynicotine.gtkgui.widgets.theme import set_use_header_bar
 from pynicotine.gtkgui.widgets.window import Window
 from pynicotine.logfacility import log
 from pynicotine.slskmessages import UserStatus
+from pynicotine.utils import humanize
 from pynicotine.utils import open_folder_path
 
 
@@ -132,6 +133,7 @@ class MainWindow(Window):
             self.room_list_label,
             self.room_search_entry,
             self.scan_progress_container,
+            self.scan_progress_label,
             self.scan_progress_spinner,
             self.search_content,
             self.search_end,
@@ -221,6 +223,9 @@ class MainWindow(Window):
             self.vertical_paned.child_set_property(self.log_container, "resize", False)
             self.vertical_paned.child_set_property(self.log_container, "shrink", False)
 
+        # Avoid unnecessary 'notify' signals when updating number of currently scanned folders
+        self.scan_progress_label.freeze_notify()
+
         # Logging
         self.log_view = TextView(
             self.log_view_container, auto_scroll=not config.sections["logging"]["logcollapsed"],
@@ -290,7 +295,7 @@ class MainWindow(Window):
         self.connect_tab_signals()
 
         # Apply UI customizations
-        set_global_style()
+        set_global_style(self.application.isolated_mode)
 
         # Show window
         self.init_window()
@@ -299,18 +304,27 @@ class MainWindow(Window):
 
     def init_window(self):
 
-        is_broadway_backend = (os.environ.get("GDK_BACKEND") == "broadway")
+        isolated_mode = self.application.isolated_mode
 
         # Set main window title and icon
         self.set_title(pynicotine.__application_name__)
         self.widget.set_default_icon_name(pynicotine.__application_id__)
 
         # Set main window size
-        self.widget.set_default_size(width=config.sections["ui"]["width"],
-                                     height=config.sections["ui"]["height"])
+        self.widget.set_default_size(
+            width=0 if isolated_mode else config.sections["ui"]["width"],
+            height=0 if isolated_mode else config.sections["ui"]["height"]
+        )
+
+        # Hide close button in isolated_mode mode (e.g. Broadway backend)
+        if isolated_mode:
+            self.widget.set_deletable(False)
+
+            if os.environ.get("GDK_BACKEND") == "broadway":
+                self.widget.set_resizable(False)
 
         # Set main window position
-        if GTK_API_VERSION == 3:
+        elif GTK_API_VERSION == 3:
             x_pos = config.sections["ui"]["xposition"]
             y_pos = config.sections["ui"]["yposition"]
 
@@ -319,12 +333,8 @@ class MainWindow(Window):
             else:
                 self.widget.move(x_pos, y_pos)
 
-        # Hide close button in Broadway backend
-        if is_broadway_backend:
-            self.widget.set_deletable(False)
-
         # Maximize main window if necessary
-        if config.sections["ui"]["maximized"] or is_broadway_backend:
+        if config.sections["ui"]["maximized"] or isolated_mode:
             self.widget.maximize()
 
         # Auto-away mode
@@ -512,7 +522,7 @@ class MainWindow(Window):
     def set_up_menu(self):
 
         menu = self.application.create_hamburger_menu()
-        self.header_menu.set_menu_model(menu.model)
+        menu.set_menu_button(self.header_menu)
 
         if GTK_API_VERSION == 3:
             return
@@ -1078,10 +1088,15 @@ class MainWindow(Window):
             ("", None),
             ("#" + _("_Copy"), self.log_view.on_copy_text),
             ("#" + _("Copy _All"), self.log_view.on_copy_all_text),
-            ("", None),
-            ("#" + _("View _Debug Logs"), self.on_view_debug_logs),
-            ("#" + _("View _Transfer Logs"), self.on_view_transfer_logs),
-            ("", None),
+            ("", None)
+        )
+        if not self.application.isolated_mode:
+            self.popup_menu_log_view.add_items(
+                ("#" + _("View _Debug Logs"), self.on_view_debug_logs),
+                ("#" + _("View _Transfer Logs"), self.on_view_transfer_logs),
+                ("", None)
+            )
+        self.popup_menu_log_view.add_items(
             (">" + _("_Log Categories"), self.popup_menu_log_categories),
             ("", None),
             ("#" + _("Clear Log View"), self.on_clear_log_view)
@@ -1149,17 +1164,29 @@ class MainWindow(Window):
 
     def shares_preparing(self):
 
+        label = _("Preparing Shares")
+
         # Hide widget to keep tooltips for other widgets visible
         self.scan_progress_container.set_visible(False)
-        self.scan_progress_container.set_tooltip_text(_("Preparing Shares"))
+        self.scan_progress_container.set_tooltip_text(label)
+        self.scan_progress_label.set_label(label)
         self.scan_progress_container.set_visible(True)
         self.scan_progress_spinner.start()
 
-    def shares_scanning(self):
+    def shares_scanning(self, folder_count=None):
+
+        label = _("Scanning Shares")
+
+        if folder_count is not None:
+            # TODO: turn this into a proper translated string in 3.4.0
+            self.scan_progress_label.set_label(
+                f"{_('Shared Folders')}: {humanize(folder_count)}")
+            return
 
         # Hide widget to keep tooltips for other widgets visible
         self.scan_progress_container.set_visible(False)
-        self.scan_progress_container.set_tooltip_text(_("Scanning Shares"))
+        self.scan_progress_container.set_tooltip_text(label)
+        self.scan_progress_label.set_label(label)
         self.scan_progress_container.set_visible(True)
         self.scan_progress_spinner.start()
 

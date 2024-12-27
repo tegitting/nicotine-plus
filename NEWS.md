@@ -5,7 +5,24 @@ The current stable version of Nicotine+ is available at [DOWNLOADS.md](doc/DOWNL
 You can run the latest unstable build of Nicotine+ to test recent changes and bug fixes, see [TESTING.md](doc/TESTING.md).
 
 
-## Version 3.3.7 (Release Candidate 2)
+## Version 3.3.8 (Unreleased)
+
+### Changes
+
+ * Added isolated mode (`nicotine --isolated`) for standalone environments (e.g. Docker containers)
+ * Show number of scanned folders while rescanning shares
+
+### Corrections
+
+ * macOS: Fixed a crash on startup with Apple Silicon build
+
+### Issues closed on GitHub
+
+ * App told me to report this. ([#3218](https://github.com/nicotine-plus/nicotine-plus/issues/3218))
+ * Nicotine 3.3.7 issue with Sonoma 14.7.2 : impossible to start app ! ([#3227](https://github.com/nicotine-plus/nicotine-plus/issues/3227))
+
+
+## Version 3.3.7 (December 15, 2024)
 
 ### Changes
 
@@ -39,6 +56,8 @@ You can run the latest unstable build of Nicotine+ to test recent changes and bu
  * \[3.3.7.dev1\] Windows Nightly builds libgcc_s_seh-1.dll is missing ([#3183](https://github.com/nicotine-plus/nicotine-plus/issues/3183))
  * \[Bug\]: Transfer Statistics Total Uploaded Size jumps to 32 EiB ([#3185](https://github.com/nicotine-plus/nicotine-plus/issues/3185))
  * Picking an emoji clears text in chat entry, rather than being appended to it ([#3197](https://github.com/nicotine-plus/nicotine-plus/issues/3197))
+ * User logs off but items in queue slowly tick away from saying queued to logged off ([#3209](https://github.com/nicotine-plus/nicotine-plus/issues/3209))
+ * Nicotine+ not working on Windows 10 since v3.3.6 ([#3210](https://github.com/nicotine-plus/nicotine-plus/issues/3210))
 
 
 ## Version 3.3.6 (October 15, 2024)
