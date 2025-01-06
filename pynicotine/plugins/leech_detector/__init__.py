@@ -181,7 +181,7 @@ class Plugin(BasePlugin):
         percent_allowed = self.metasettings["percent_threshold"]["minimum"]
         share_size = self.metasettings["share_size"]["minimum"]
         req_share = 0
-        
+
         # try and populate the text boxes
         if not self.settings["no_files_message"]:
             self.settings["no_files_message"] = "You need shared files to download from me"
