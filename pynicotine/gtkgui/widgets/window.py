@@ -198,6 +198,12 @@ class Window:
     def set_title(self, title):
         self.widget.set_title(title)
 
+    def maximize(self):
+        self.widget.maximize()
+
+    def unmaximize(self):
+        self.widget.unmaximize()
+
     def present(self):
 
         if self.activation_token is not None:

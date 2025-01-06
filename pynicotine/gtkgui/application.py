@@ -45,8 +45,16 @@ LIBADWAITA_API_VERSION = 0
 if GTK_API_VERSION >= 4:
     try:
         if "NICOTINE_LIBADWAITA" not in os.environ:
+            # Only attempt to use libadwaita in a standard GNOME session or Ubuntu's
+            # GNOME session (identified as 'GNOME' and 'ubuntu:GNOME'). Filter out
+            # other desktop environments that specify GNOME as a fallback, such as
+            # Budgie (identified as 'Budgie:GNOME').
+            current_desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+
             os.environ["NICOTINE_LIBADWAITA"] = str(int(
-                sys.platform in {"win32", "darwin"} or "gnome" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+                sys.platform in {"win32", "darwin"}
+                or current_desktop == "gnome"
+                or ("ubuntu" in current_desktop and "gnome" in current_desktop)
             ))
 
         if os.environ.get("NICOTINE_LIBADWAITA") == "1":
@@ -811,6 +819,11 @@ class Application:
             return
 
         self.window.present()
+
+        # Workaround for broken window size when restoring maximized window from tray icon
+        if sys.platform == "win32" and self.window.is_maximized():
+            self.window.unmaximize()
+            self.window.maximize()
 
     def on_away_accelerator(self, action, *_args):
         """Ctrl+H: Away/Online toggle."""
