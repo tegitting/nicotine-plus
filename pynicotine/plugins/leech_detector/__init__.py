@@ -18,6 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pynicotine.pluginsystem import BasePlugin
+from pynicotine.gtkgui.widgets.treeview import TreeView
 from pynicotine.utils import human_size
 
 
@@ -26,8 +27,25 @@ class Plugin(BasePlugin):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-
+        self.detected_users_list_view = TreeView(
+            multi_select=True, delete_accelerator_callback=self.on_remove_detected_users,
+            columns={
+                "username": {
+                    "column_type": "text",
+                    "title": _("Username"),
+                    "width": 100,
+                    "expand_column": True
+                },
+                "detected_reason": {
+                    "column_type": "text",
+                    "title": _("Ban reason"),
+                    "expand_column": True,
+                    "default_sort_type": "ascending"
+                }
+            }
+        )
         self.settings = {
+            "detected_userlist": self.detected_users_list_view,
             "open_private_chat": False,
             "no_files_ban": True,
             "no_files_pm": True,
