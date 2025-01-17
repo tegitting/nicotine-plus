@@ -18,7 +18,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pynicotine.pluginsystem import BasePlugin
-from pynicotine.gtkgui.widgets.treeview import TreeView
 from pynicotine.utils import human_size
 
 
