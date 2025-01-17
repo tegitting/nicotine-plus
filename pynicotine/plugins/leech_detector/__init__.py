@@ -45,7 +45,7 @@ class Plugin(BasePlugin):
             }
         )
         self.settings = {
-            "detected_userlist": self.detected_users_list_view,
+            "detected_users": self.detected_users_list_view,
             "open_private_chat": False,
             "no_files_ban": True,
             "no_files_pm": True,
@@ -191,6 +191,15 @@ class Plugin(BasePlugin):
             },
         }
         self.probed_downloaders = {}
+
+    def on_remove_detected_users(self, *_args):
+
+        for iterator in reversed(list(self.detected_users_list_view.get_selected_rows())):
+            user = self.detected_users_list_view.get_row_value(iterator, "username")
+            orig_iterator = self.detected_users_list_view.iterators[user]
+
+            self.detected_users_list_view.remove_row(orig_iterator)
+            self.detected_users.remove(user)
 
     # plugin loaded notifications
     def loaded_notification(self):
