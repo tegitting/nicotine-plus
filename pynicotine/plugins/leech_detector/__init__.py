@@ -27,25 +27,7 @@ class Plugin(BasePlugin):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-        self.detected_users_list_view = TreeView(
-            multi_select=True, delete_accelerator_callback=self.on_remove_detected_users,
-            columns={
-                "username": {
-                    "column_type": "text",
-                    "title": _("Username"),
-                    "width": 100,
-                    "expand_column": True
-                },
-                "detected_reason": {
-                    "column_type": "text",
-                    "title": _("Ban reason"),
-                    "expand_column": True,
-                    "default_sort_type": "ascending"
-                }
-            }
-        )
         self.settings = {
-            "detected_users": self.detected_users_list_view,
             "open_private_chat": False,
             "no_files_ban": True,
             "no_files_pm": True,
@@ -191,15 +173,6 @@ class Plugin(BasePlugin):
             },
         }
         self.probed_downloaders = {}
-
-    def on_remove_detected_users(self, *_args):
-
-        for iterator in reversed(list(self.detected_users_list_view.get_selected_rows())):
-            user = self.detected_users_list_view.get_row_value(iterator, "username")
-            orig_iterator = self.detected_users_list_view.iterators[user]
-
-            self.detected_users_list_view.remove_row(orig_iterator)
-            self.detected_users.remove(user)
 
     # plugin loaded notifications
     def loaded_notification(self):
