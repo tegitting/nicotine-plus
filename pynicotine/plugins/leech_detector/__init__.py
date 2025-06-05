@@ -430,7 +430,6 @@ class Plugin(BasePlugin):
                     self.log("[FILE-COUNT] - There is no message configured in plugin")
                 else:
                     message = "[Auto-Message] " + self.settings["num_files_message"]
-                    message.replace("%files%", files)
                     self.ld_message_user(user, message)
             return
 
