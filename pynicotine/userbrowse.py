@@ -389,6 +389,7 @@ class UserBrowse:
         username = msg.username
         browsed_user = self.users.get(username)
         num_folders = len(msg.list) + len(msg.privatelist)
+        private_folders = len(msg.privatelist)
         num_files = 0
         shared_size = 0
 
@@ -406,9 +407,10 @@ class UserBrowse:
             browsed_user.shared_size = shared_size
 
         core.pluginhandler.user_stats_notification(username, stats={
-            "avgspeed": None,
+            "username": username,
             "files": num_files,
             "dirs": num_folders,
+            "private_dirs": private_folders,
             "shared_size": shared_size,
             "source": "peer"
         })
