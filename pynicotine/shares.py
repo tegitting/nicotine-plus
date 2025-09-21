@@ -1039,13 +1039,11 @@ class Shares:
         num_shared_folders = len(self.share_dbs.get("public_streams", {}))
         num_shared_files = len(self.share_dbs.get("public_files", {}))
 
-        if config.sections["transfers"]["reveal_buddy_shares"]:
-            num_shared_folders += len(self.share_dbs.get("buddy_streams", {}))
-            num_shared_files += len(self.share_dbs.get("buddy_files", {}))
+        num_shared_folders += len(self.share_dbs.get("buddy_streams", {}))
+        num_shared_files += len(self.share_dbs.get("buddy_files", {}))
 
-        if config.sections["transfers"]["reveal_trusted_shares"]:
-            num_shared_folders += len(self.share_dbs.get("trusted_streams", {}))
-            num_shared_files += len(self.share_dbs.get("trusted_files", {}))
+        num_shared_folders += len(self.share_dbs.get("trusted_streams", {}))
+        num_shared_files += len(self.share_dbs.get("trusted_files", {}))
 
         core.send_message_to_server(SharedFoldersFiles(num_shared_folders, num_shared_files))
 
