@@ -202,12 +202,9 @@ class Plugin(BasePlugin):
         # Use a single function for size conversion
         required_share_bytes = self._convert_size_to_bytes(self.settings["share_size"], self.settings["share_size_unit"])
 
+        # This line was fixed to use a single f-string instead of multiple arguments
         self.log(
-            "Users require %d files, %d folders with less than %d%% locked and at least %s of data to be shared.",
-            self.settings["num_files"],
-            self.settings["num_folders"],
-            self.settings["percent_threshold"],
-            human_size(required_share_bytes),
+            f"Users require {self.settings['num_files']} files, {self.settings['num_folders']} folders with less than {self.settings['percent_threshold']}% locked and at least {human_size(required_share_bytes)} of data to be shared."
         )
         self.log(
             "NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!"
