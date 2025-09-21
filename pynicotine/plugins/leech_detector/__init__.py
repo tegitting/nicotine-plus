@@ -20,11 +20,16 @@
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
 
+# Define constants to improve readability and maintainability
+KB_IN_BYTES = 1024
+MB_IN_BYTES = KB_IN_BYTES * 1024
+GB_IN_BYTES = MB_IN_BYTES * 1024
+AUTO_MESSAGE_PREFIX = "[Auto-Message] "
+
 
 class Plugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
-
         super().__init__(*args, **kwargs)
         self.settings = {
             "open_private_chat": False,
@@ -173,337 +178,200 @@ class Plugin(BasePlugin):
         }
         self.probed_downloaders = {}
 
-    # plugin loaded notifications
     def loaded_notification(self):
-        min_num_files = self.metasettings["num_files"]["minimum"]
-        min_num_folders = self.metasettings["num_folders"]["minimum"]
-        percent_allowed = self.metasettings["percent_threshold"]["minimum"]
-        share_size = self.metasettings["share_size"]["minimum"]
-        req_share = 0
+        # Use a more consistent approach for populating messages
+        messages = {
+            "no_files_message": "You need shared files to download from me",
+            "all_privates_message": "You cannot download from me when your files are all private",
+            "empty_folders_message": "You cannot download from me when your shared folders are empty",
+            "num_files_message": "Please consider adding more shared files",
+            "num_folders_message": "Please consider having more shared folders",
+            "percent_threshold_message": "You have too many locked/private folders",
+            "share_size_message": "You are not sharing enough media",
+        }
+        for key, default_message in messages.items():
+            if not self.settings.get(key):
+                self.settings[key] = default_message
 
-        # try and populate the text boxes
-        if not self.settings["no_files_message"]:
-            self.settings["no_files_message"] = "You need shared files to download from me"
+        # Ensure settings are within their defined bounds
+        self.settings["num_files"] = max(self.settings["num_files"], self.metasettings["num_files"]["minimum"])
+        self.settings["num_folders"] = max(self.settings["num_folders"], self.metasettings["num_folders"]["minimum"])
+        self.settings["percent_threshold"] = max(self.settings["percent_threshold"], self.metasettings["percent_threshold"]["minimum"])
+        self.settings["share_size"] = max(self.settings["share_size"], self.metasettings["share_size"]["minimum"])
 
-        if not self.settings["all_privates_message"]:
-            self.settings["all_privates_message"] = "You cannot download from me when your files are all private"
-
-        if not self.settings["empty_folders_message"]:
-            self.settings["empty_folders_message"] = "You cannot download from me when your shared folders are empty"
-
-        if not self.settings["num_files_message"]:
-            self.settings["num_files_message"] = "Please consider adding more shared files"
-
-        if not self.settings["num_folders_message"]:
-            self.settings["num_folders_message"] = "Please consider having more shared folders"
-
-        if not self.settings["percent_threshold_message"]:
-            self.settings["percent_threshold_message"] = "You have too many locked/private folders"
-
-        if not self.settings["share_size_message"]:
-            self.settings["share_size_message"] = "You are not sharing enough media"
-
-        if self.settings["num_files"] < min_num_files:
-            self.settings["num_files"] = min_num_files
-
-        if self.settings["num_folders"] < min_num_folders:
-            self.settings["num_folders"] = min_num_folders
-
-        if self.settings["percent_threshold"] < percent_allowed:
-            self.settings["percent_threshold"] = percent_allowed
-
-        if self.settings["share_size"] < share_size:
-            self.settings["share_size"] = share_size
-
-        if self.settings["share_size_unit"] == "MB":
-            req_share = human_size(self.convert_megs_to_bytes(self.settings["share_size"]))
-
-        if self.settings["share_size_unit"] == "GB":
-            req_share = human_size(self.convert_gigs_to_bytes(self.settings["share_size"]))
+        # Use a single function for size conversion
+        required_share_bytes = self._convert_size_to_bytes(self.settings["share_size"], self.settings["share_size_unit"])
 
         self.log(
-            "Users require %d files, %d folders with less than %d"
-            + "%% locked and at least %s of data to be shared.",
-            (
-                self.settings["num_files"],
-                self.settings["num_folders"],
-                self.settings["percent_threshold"],
-                req_share,
-            ),
+            "Users require %d files, %d folders with less than %d%% locked and at least %s of data to be shared.",
+            self.settings["num_files"],
+            self.settings["num_folders"],
+            self.settings["percent_threshold"],
+            human_size(required_share_bytes),
         )
         self.log(
             "NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!"
         )
 
-    # convert bytes to mbs
-    def convert_bytes_to_megs(self, bytes_value):
-        return round(bytes_value / 1048576)
+    def _convert_size_to_bytes(self, value, unit):
+        """Converts a given size to bytes based on the unit."""
+        if unit == "MB":
+            return value * MB_IN_BYTES
+        elif unit == "GB":
+            return value * GB_IN_BYTES
+        return 0
 
-    # convert bytes to gbs
-    def convert_bytes_to_gigs(self, bytes_value):
-        return round(bytes_value / 1073741824)
+    def _convert_bytes_to_unit(self, bytes_value, unit):
+        """Converts bytes to the given unit (MB or GB)."""
+        if unit == "MB":
+            return bytes_value / MB_IN_BYTES
+        elif unit == "GB":
+            return bytes_value / GB_IN_BYTES
+        return 0
 
-    # convert megs to bytes
-    def convert_megs_to_bytes(self, megs_value):
-        return megs_value * 1048576
+    def _handle_user_action(self, user, ban_setting, message_setting, message_text):
+        """Helper function to handle banning and messaging users."""
+        if ban_setting:
+            self.ld_ban_user(user)
+        if message_setting and message_text:
+            self.ld_message_user(user, AUTO_MESSAGE_PREFIX + message_text)
+        elif message_setting:
+            self.log("Message configured for this action is empty.")
 
-    # convert gigs to bytes
-    def convert_gigs_to_bytes(self, gigs_value):
-        return gigs_value * 1073741824
-
-    # function to calculate percentage
     def calculate_percentage(self, part, whole):
-        percent = round((part / whole) * 100)
-        return percent
+        """Calculate percentage safely to avoid division by zero."""
+        return round((part / whole) * 100) if whole else 0
 
-    # ban a user
     def ld_ban_user(self, user):
+        """Bans a user and logs the action."""
         self.core.network_filter.ban_user(user)
-        self.log("User %s has been banned", user)
+        self.log(f"User {user} has been banned.")
 
-    # message a user
     def ld_message_user(self, user, message):
+        """Messages a user and logs the action."""
         self.send_private(user, message, show_ui=self.settings["open_private_chat"], switch_page=False)
-        # log what we sent
-        self.log(
-            "Message sent to %s was %s",
-            (
-                user,
-                message,
-            ),
-        )
+        self.log(f"Message sent to {user} was '{message}'.")
 
-    # an upload has been requested
     def upload_queued_notification(self, user, virtual_path, real_path):
-        # user already dealt with
+        """An upload has been requested."""
         if user in self.probed_downloaders:
             return
 
-        # record the user as a downloader
         self.probed_downloaders[user] = "downloader"
-
-        # browse user to invoke a user_stats_notification
         self.core.userbrowse.browse_user(user)
-        # log it
-        self.log("User %s requested an upload - browsing shares...", user)
+        self.log(f"User {user} requested an upload - browsing shares...")
 
-    # receive stats for a user
     def user_stats_notification(self, user, stats):
-        # only process the notification when private_dirs is in stats
-        # we only get this in the customised userbrowse function
+        """Receives and processes stats for a user."""
         if stats.get("private_dirs") is not None:
-            # Check if values exist and are not None before converting to int
-            if stats.get("files") is not None:
-                files = int(stats.get("files"))
-            else:
-                files = 0
-            
-            if stats.get("dirs") is not None:
-                folders = int(stats.get("dirs"))
-            else:
-                folders = 0
+            # Safely get stats with default values to prevent errors
+            files = int(stats.get("files", 0))
+            folders = int(stats.get("dirs", 0))
+            private_folders = int(stats.get("private_dirs", 0))
+            total_shared = int(stats.get("shared_size", 0))
 
-            private_folders = int(stats.get("private_dirs"))
-            total_shared = int(stats.get("shared_size"))
+            locked_percent = self.calculate_percentage(private_folders, folders)
 
-            # prevent any division by zero error
-            if folders:
-                locked_percent = self.calculate_percentage(private_folders, folders)
-            else:
-                locked_percent = 0
-            
-            # log progress and display the users shares
             self.log(
-                "User %s shares %s files %s folders with %s private. %s percent of %s is locked",
-                (
-                    user,
-                    files,
-                    folders,
-                    private_folders,
-                    locked_percent,
-                    human_size(total_shared),
-                ),
+                f"User {user} shares {files} files, {folders} folders with {private_folders} private. "
+                f"{locked_percent}% of {human_size(total_shared)} is locked."
             )
 
-            # if the user is a downloader
             if user in self.probed_downloaders:
-                # then perform some analysis on the stats
                 self.check_downloader(
                     user,
                     files,
                     folders,
                     private_folders,
-                    int(locked_percent),
+                    locked_percent,
                     total_shared,
                 )
 
-    # check the
-    def check_downloader(
-        self, user, files, folders, private_folders, locked_percent, total_shared
-    ):
+    def check_downloader(self, user, files, folders, private_folders, locked_percent, total_shared):
+        """Performs analysis on a downloader's stats."""
+        required_share_bytes = self._convert_size_to_bytes(
+            self.settings["share_size"], self.settings["share_size_unit"]
+        )
+        required_share_human = human_size(required_share_bytes)
 
-        required_share = 0
-        converted_share = 0
-        # convert share size to the chosen conversion metric
-        if self.settings["share_size_unit"] == "MB":
-            converted_share = self.convert_bytes_to_megs(int(total_shared))
-            required_share = self.convert_megs_to_bytes(self.settings["share_size"])
-        # convert share size to the chosen conversion metric
-        if self.settings["share_size_unit"] == "GB":
-            converted_share = self.convert_bytes_to_gigs(int(total_shared))
-            required_share = self.convert_gigs_to_bytes(self.settings["share_size"])
-
-        # check stats
-        if (
-            files >= self.settings["num_files"]
-            and folders >= self.settings["num_folders"]
-            and locked_percent < self.settings["percent_threshold"]
-            and converted_share > self.settings["share_size"]
-        ):
-            # stats are goo - mark the user as OK
-            self.probed_downloaders[user] = "OK"
-
-            # log progress
-            if user in self.core.buddies.users:
-                self.log("Buddy %s is OK.", user)
-                return
-            self.log("User %s is OK.", user)
-            return
-
-        # non-regular sharing conditions
-        # user is not sharing anything
+        # Check for non-regular sharing conditions first
         if not files and not folders:
-            self.log("User %s shares no files or folders.", user)
-            # close down the tab for the browsed user
+            self.log(f"User {user} shares no files or folders.")
             self.core.userbrowse.remove_user(user)
-            # if a ban is required
-            if self.settings["no_files_ban"] is True:
-                self.ld_ban_user(user)
-            if self.settings["no_files_pm"] is True:
-                if not self.settings["no_files_message"]:
-                    self.log("[NO-FILES] There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["no_files_message"]
-                    self.ld_message_user(user, message)
+            self._handle_user_action(
+                user,
+                self.settings["no_files_ban"],
+                self.settings["no_files_pm"],
+                self.settings["no_files_message"],
+            )
             return
 
-        # user has files but all folders are locked/private
         if files > 0 and folders == private_folders:
-            self.log("User %s has shares files but all of their folders are private.", user)
-            # close down the tab for the browsed user
+            self.log(f"User {user} has shares files but all of their folders are private.")
             self.core.userbrowse.remove_user(user)
-            # if a ban is required
-            if self.settings["all_privates_ban"] is True:
-                self.ld_ban_user(user)
-            if self.settings["all_privates_pm"] is True:
-                if not self.settings["all_privates_message"]:
-                    self.log("[ALL-PRIVATES] - There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["all_privates_message"]
-                    self.ld_message_user(user, message)
+            self._handle_user_action(
+                user,
+                self.settings["all_privates_ban"],
+                self.settings["all_privates_pm"],
+                self.settings["all_privates_message"],
+            )
             return
 
-        # user no files but has empty shared folders
         if not files and folders > 0:
-            self.log("User %s shares no files, only empty folders.", user)
-            # close down the tab for the browsed user
+            self.log(f"User {user} shares no files, only empty folders.")
             self.core.userbrowse.remove_user(user)
-            # if a ban is required
-            if self.settings["empty_folders_ban"] is True:
-                self.ld_ban_user(user)
-            if self.settings["empty_folders_pm"] is True:
-                if not self.settings["empty_folders_message"]:
-                    self.log("[ALL-PRIVATES] - There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["empty_folders_message"]
-                    self.ld_message_user(user, message)
-            return
-
-        # regular sharing conditions
-        # files check
-        if files <= self.settings["num_files"]:
-            self.log(
-                "User %s shares %s files but the plugin requires %s",
-                (
-                    user,
-                    files,
-                    self.settings["num_files"],
-                ),
+            self._handle_user_action(
+                user,
+                self.settings["empty_folders_ban"],
+                self.settings["empty_folders_pm"],
+                self.settings["empty_folders_message"],
             )
-            # is banning enabled?
-            if self.settings["num_files_ban"] is True:
-                self.ld_ban_user(user)
-            # is messaging enabled?
-            if self.settings["num_files_pm"] is True:
-                if not self.settings["num_files_message"]:
-                    self.log("[FILE-COUNT] - There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["num_files_message"]
-                    self.ld_message_user(user, message)
             return
 
-        # folder check
+        # Regular sharing conditions
+        if files < self.settings["num_files"]:
+            self.log(f"User {user} shares {files} files but requires {self.settings['num_files']}.")
+            self._handle_user_action(
+                user,
+                self.settings["num_files_ban"],
+                self.settings["num_files_pm"],
+                self.settings["num_files_message"],
+            )
+            return
+
         if folders < self.settings["num_folders"]:
-            self.log(
-                "User %s has %s folders but the plugin requires %s",
-                (
-                    user,
-                    folders,
-                    self.settings["num_folders"],
-                ),
+            self.log(f"User {user} has {folders} folders but requires {self.settings['num_folders']}.")
+            self._handle_user_action(
+                user,
+                self.settings["num_folders_ban"],
+                self.settings["num_folders_pm"],
+                self.settings["num_folders_message"],
             )
-            # is ban enabled?
-            if self.settings["num_folders_ban"] is True:
-                self.ld_ban_user(user)
-            # is messaging enabled?
-            if self.settings["num_folders_pm"] is True:
-                if not self.settings["num_folders_message"]:
-                    self.log("[FOLDER-COUNT] - There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["num_folders_message"]
-                    self.ld_message_user(user, message)
             return
 
-        # percentage check
         if locked_percent > self.settings["percent_threshold"]:
-            self.log(
-                "User %s has %s" + "%% of folders locked, plugin requires less than %s",
-                (
-                    user,
-                    locked_percent,
-                    self.settings["percent_threshold"],
-                ),
+            self.log(f"User {user} has {locked_percent}% of folders locked, requires less than {self.settings['percent_threshold']}%.")
+            self._handle_user_action(
+                user,
+                self.settings["percent_threshold_ban"],
+                self.settings["percent_threshold_pm"],
+                self.settings["percent_threshold_message"],
             )
-            # is ban enabled?
-            if self.settings["percent_threshold_ban"] is True:
-                self.ld_ban_user(user)
-            # is messaging enabled?
-            if self.settings["percent_threshold_pm"] is True:
-                if not self.settings["percent_threshold_message"]:
-                    self.log("[LOCKED-PERCENT] - There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["percent_threshold_message"]
-                    self.ld_message_user(user, message)
             return
 
-        # share size check
-        if converted_share < self.settings["share_size"]:
-            self.log(
-                "User %s shares %s but the plugin requires %s",
-                (
-                    user,
-                    human_size(total_shared),
-                    human_size(required_share),
-                ),
+        if total_shared < required_share_bytes:
+            self.log(f"User {user} shares {human_size(total_shared)} but requires {required_share_human}.")
+            self._handle_user_action(
+                user,
+                self.settings["share_size_ban"],
+                self.settings["share_size_pm"],
+                self.settings["share_size_message"],
             )
-            # is ban enabled?
-            if self.settings["share_size_ban"] is True:
-                self.ld_ban_user(user)
-            # is messaging enabled?
-            if self.settings["share_size_pm"] is True:
-                if not self.settings["share_size_message"]:
-                    self.log("[SHARE-SIZE] - There is no message configured in plugin")
-                else:
-                    message = "[Auto-Message] " + self.settings["share_size_message"]
-                    self.ld_message_user(user, message)
             return
+
+        # If all checks pass
+        self.probed_downloaders[user] = "OK"
+        if user in self.core.buddies.users:
+            self.log(f"Buddy {user} is OK.")
+        else:
+            self.log(f"User {user} is OK.")
