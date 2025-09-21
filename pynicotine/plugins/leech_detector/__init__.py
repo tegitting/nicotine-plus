@@ -292,8 +292,17 @@ class Plugin(BasePlugin):
         # only process the notification when private_dirs is in stats
         # we only get this in the customised userbrowse function
         if stats.get("private_dirs") is not None:
-            files = int(stats.get("files"))
-            folders = int(stats.get("dirs"))
+            # Check if values exist and are not None before converting to int
+            if stats.get("files") is not None:
+                files = int(stats.get("files"))
+            else:
+                files = 0
+            
+            if stats.get("dirs") is not None:
+                folders = int(stats.get("dirs"))
+            else:
+                folders = 0
+
             private_folders = int(stats.get("private_dirs"))
             total_shared = int(stats.get("shared_size"))
 
@@ -302,7 +311,7 @@ class Plugin(BasePlugin):
                 locked_percent = self.calculate_percentage(private_folders, folders)
             else:
                 locked_percent = 0
-
+            
             # log progress and display the users shares
             self.log(
                 "User %s shares %s files %s folders with %s private. %s percent of %s is locked",
