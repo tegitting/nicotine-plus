@@ -1,4 +1,4 @@
-Version = "1.0"
-Authors = "tegitting"
+Version = "0.7"
+Authors = ["tegitting"]
 Name = "Share Detector"
 Description = "Detects non-sharers, optionally sends them a message and/or applys a ban..\n\nNOTE: This plugin is not endorsed or supported by the Nicotine+ developers."
