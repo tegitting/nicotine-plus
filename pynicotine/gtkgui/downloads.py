@@ -70,10 +70,12 @@ class Downloads(Transfers):
         for event_name, callback in (
             ("abort-download", self.abort_transfer),
             ("abort-downloads", self.abort_transfers),
+            ("add-buddy", self.update_buddy),
             ("clear-download", self.clear_transfer),
             ("clear-downloads", self.clear_transfers),
             ("download-large-folder", self.download_large_folder),
             ("folder-download-finished", self.folder_download_finished),
+            ("remove-buddy", self.update_buddy),
             ("set-connection-stats", self.set_connection_stats),
             ("start", self.start),
             ("update-download", self.update_model),
@@ -108,14 +110,19 @@ class Downloads(Transfers):
         self._update_pending_parent_rows()
 
         download_bandwidth = human_speed(download_bandwidth)
-        download_bandwidth_text = f"{download_bandwidth} ( {len(core.downloads.active_users)} )"
+        active_users = len(core.downloads.active_users)
+        download_bandwidth_text = f"{download_bandwidth} ( {active_users} )"
 
         if self.window.download_status_label.get_text() == download_bandwidth_text:
             return
 
         self.window.download_status_label.set_text(download_bandwidth_text)
         self.window.application.tray_icon.set_download_status(
-            _("Downloads: %(speed)s") % {"speed": download_bandwidth})
+            _("Downloading: %(speed)s ( %(active_users)s )") % {
+                "speed": download_bandwidth,
+                "active_users": active_users
+            }
+        )
 
     def on_try_clear_queued(self, *_args):
 

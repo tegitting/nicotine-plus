@@ -579,6 +579,7 @@ class SharesPage:
 
         (
             self.container,
+            self.file_manager_button,
             self.rescan_daily_toggle,
             self.rescan_on_startup_toggle,
             self.reveal_buddy_shares_toggle,
@@ -595,7 +596,7 @@ class SharesPage:
 
         self.shares_list_view = TreeView(
             application.window, parent=self.shares_list_container, multi_select=True,
-            activate_row_callback=self.on_edit_shared_folder,
+            activate_row_callback=self.on_edit_shared_folder, select_row_callback=self.on_select_row,
             delete_accelerator_callback=self.on_remove_shared_folder,
             columns={
                 "virtual_name": {
@@ -765,6 +766,16 @@ class SharesPage:
                 virtual_name, share_groups=(self.shared_folders, self.buddy_shared_folders, self.trusted_shared_folders)
             )
             self.shares_list_view.remove_row(orig_iterator)
+
+    def on_open_file_manager(self, *_args):
+
+        for iterator in self.shares_list_view.get_selected_rows():
+            folder_path = self.shares_list_view.get_row_value(iterator, "folder")
+            open_folder_path(folder_path, create_folder=True)
+            return
+
+    def on_select_row(self, _list_view, iterator):
+        self.file_manager_button.set_sensitive(iterator is not None)
 
 
 class UploadsPage:
@@ -3486,8 +3497,7 @@ class Preferences(Dialog):
                         switch_label.add_controller(switch_label.gesture_click)
                     else:
                         switch_label.set_has_window(True)
-                        switch_label.gesture_click = Gtk.GestureMultiPress(  # pylint: disable=c-extension-no-member
-                            widget=switch_label)
+                        switch_label.gesture_click = Gtk.GestureMultiPress(widget=switch_label)
 
                     obj.set_receives_default(True)
                     switch_label.gesture_click.connect("released", self.on_toggle_label_pressed, obj)
