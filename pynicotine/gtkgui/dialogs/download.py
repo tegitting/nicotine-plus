@@ -9,7 +9,6 @@ from gi.repository import GLib
 from gi.repository import GObject
 from gi.repository import Gtk
 
-from pynicotine.config import config
 from pynicotine.core import core
 from pynicotine.events import events
 from pynicotine.gtkgui.application import GTK_API_VERSION
@@ -18,6 +17,7 @@ from pynicotine.gtkgui.widgets.dialogs import Dialog
 from pynicotine.gtkgui.widgets.dialogs import EntryDialog
 from pynicotine.gtkgui.widgets.filechooser import FileChooserButton
 from pynicotine.gtkgui.widgets.infobar import InfoBar
+from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
 from pynicotine.gtkgui.widgets.treeview import TreeView
 from pynicotine.utils import human_size
 from pynicotine.utils import humanize
@@ -59,6 +59,7 @@ class Download(Dialog):
             show_title_buttons=False
         )
         application.add_window(self.widget)
+
         self.application = application
         self.parent_iterators = {}
         self.initial_selected_iterators = set()
@@ -118,6 +119,11 @@ class Download(Dialog):
             }
         )
 
+        self.popup_menu = PopupMenu(application, self.tree_view.widget, self.on_popup_menu)
+        self.popup_menu.add_items(
+            ("#" + _("_Rename…"), self.on_rename)
+        )
+
         self.expand_button.connect("toggled", self.on_expand_tree)
 
         for event_name, callback in (
@@ -131,6 +137,7 @@ class Download(Dialog):
 
         self.clear()
 
+        self.popup_menu.destroy()
         self.download_folder_button.destroy()
         self.info_bar.destroy()
         self.tree_view.destroy()
@@ -160,7 +167,9 @@ class Download(Dialog):
         self.expand_button.set_active(True)
         self.enable_subfolders_toggle.set_active(True)
         self.enable_subfolders_toggle.get_parent().set_visible(partial_files)
-        self.download_folder_button.set_path(config.sections["transfers"]["downloaddir"])
+        self.download_folder_button.set_path(
+            self.application.previous_download_folder or core.downloads.get_default_download_folder()
+        )
 
         self.select_all = select_all
         has_unselected_files = False
@@ -313,7 +322,7 @@ class Download(Dialog):
             if self.enable_subfolders_toggle.get_active():
                 download_folder_path = self.download_folder_button.get_path()
 
-                if download_folder_path == config.sections["transfers"]["downloaddir"]:
+                if download_folder_path == core.downloads.get_default_download_folder():
                     download_folder_path = core.downloads.get_default_download_folder(username)
 
                 destination_folder_name = self.folder_names[folder_path]
@@ -329,6 +338,7 @@ class Download(Dialog):
                 file_attributes=file_attributes, paused=paused
             )
 
+        self.application.previous_download_folder = self.download_folder_button.get_path()
         self.close()
 
     def pulse_progress(self, repeat=True):
@@ -465,6 +475,9 @@ class Download(Dialog):
     def server_disconnect(self, *_args):
         if self.indeterminate_progress:
             self.set_failed()
+
+    def on_popup_menu(self, menu, _widget):
+        menu.actions[_("_Rename…")].set_enabled(self.rename_button.get_sensitive())
 
     def on_retry(self, *_args):
 
@@ -642,7 +655,7 @@ class Download(Dialog):
         self.rename_button.set_visible(self.enable_subfolders_toggle.get_active())
 
     def on_default_download_folder(self, *_args):
-        self.download_folder_button.set_path(config.sections["transfers"]["downloaddir"])
+        self.download_folder_button.set_path(core.downloads.get_default_download_folder())
 
     def on_row_activated(self, tree_view, iterator, column_id):
 
