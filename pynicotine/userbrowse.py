@@ -23,7 +23,7 @@ from pynicotine.utils import humanize
 
 class BrowsedUser:
     __slots__ = ("username", "public_folders", "private_folders", "num_folders", "num_files",
-                 "shared_size")
+                 "num_private_files", "shared_size")
 
     def __init__(self, username):
 
@@ -32,6 +32,7 @@ class BrowsedUser:
         self.private_folders = {}
         self.num_folders = None
         self.num_files = None
+        self.mum_private_files = None
         self.shared_size = None
 
     def clear(self):
@@ -39,6 +40,7 @@ class BrowsedUser:
         self.public_folders.clear()
         self.private_folders.clear()
         self.num_folders = self.num_files = self.shared_size = None
+        self.num_private_files = None
 
 
 class UserBrowse:
@@ -391,6 +393,7 @@ class UserBrowse:
         num_folders = len(msg.list) + len(msg.privatelist)
         private_folders = len(msg.privatelist)
         num_files = 0
+        num_private_files = 0
         shared_size = 0
 
         for _folder_path, files in chain(msg.list, msg.privatelist):
@@ -399,18 +402,22 @@ class UserBrowse:
 
             num_files += len(files)
 
+        for _folder_path, files in chain(msg.privatelist):
+            num_private_files += len(files)
+
         if browsed_user is not None:
             browsed_user.public_folders = dict(msg.list)
             browsed_user.private_folders = dict(msg.privatelist)
             browsed_user.num_folders = num_folders
             browsed_user.num_files = num_files
+            browsed_user.num_private_files = num_private_files            
             browsed_user.shared_size = shared_size
 
         core.pluginhandler.user_stats_notification(username, stats={
             "username": username,
             "files": num_files,
             "dirs": num_folders,
-            "private_dirs": private_folders,
+            "private_files": num_private_files,
             "shared_size": shared_size,
             "source": "peer"
         })
