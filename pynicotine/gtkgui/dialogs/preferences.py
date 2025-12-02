@@ -585,18 +585,26 @@ class SharesPage:
         _("Buddies"): PermissionLevel.BUDDY,
         _("Trusted buddies"): PermissionLevel.TRUSTED
     }
+    FILTER_LEVELS = {
+        _("Applies to files"): _("Files"),
+        _("Applies to folders"): _("Folders")
+    }
 
     def __init__(self, application):
 
         (
             self.container,
             self.file_manager_button,
+            self.filter_list_container,
+            self.filter_list_page,
             self.rescan_daily_toggle,
             self.rescan_hour_container,
             self.rescan_on_startup_toggle,
             self.reveal_buddy_shares_toggle,
             self.reveal_trusted_shares_toggle,
-            self.shares_list_container
+            self.shares_list_container,
+            self.shares_list_page,
+            self.stack
         ) = self.widgets = ui.load(scope=self, path="settings/shares.ui")
 
         self.application = application
@@ -605,6 +613,7 @@ class SharesPage:
         self.shared_folders = []
         self.buddy_shared_folders = []
         self.trusted_shared_folders = []
+        self.share_filters = []
 
         items = []
         for hour in range(24):
@@ -655,6 +664,45 @@ class SharesPage:
             ("#" + _("Remove"), self.on_remove_shared_folder)
         )
 
+        self.filter_syntax_description = _("Syntax: Case-insensitive. Virtual paths containing separators \\ are "
+                                           "supported. Wildcard * matches are supported.")
+        self.filter_list_view = TreeView(
+            application.window, parent=self.filter_list_container, multi_select=True,
+            activate_row_callback=self.on_edit_filter,
+            delete_accelerator_callback=self.on_remove_filter,
+            columns={
+                "filter": {
+                    "column_type": "text",
+                    "title": _("Filter"),
+                    "width": 150,
+                    "expand_column": True,
+                    "default_sort_type": "ascending"
+                },
+                "applies_to": {
+                    "column_type": "text",
+                    "title": _("Applies To"),
+                    "width": 0
+                }
+            }
+        )
+
+        self.filter_popup_menu = PopupMenu(application, self.filter_list_view.widget)
+        self.filter_popup_menu.add_items(
+            ("#" + _("_Edit…"), self.on_edit_filter),
+            ("", None),
+            ("#" + _("Remove"), self.on_remove_filter)
+        )
+
+        self.popup_menus = (
+            self.shares_popup_menu, self.filter_popup_menu
+        )
+
+        for widget, name, title in (
+            (self.shares_list_page, "shared_folders", _("Shared Folders")),
+            (self.filter_list_page, "filters", _("Filters")),
+        ):
+            self.stack.add_titled(widget, name, title)
+
         self.options = {
             "transfers": {
                 "rescanonstartup": self.rescan_on_startup_toggle,
@@ -667,20 +715,28 @@ class SharesPage:
 
     def destroy(self):
 
-        self.shares_popup_menu.destroy()
+        for menu in self.popup_menus:
+            menu.destroy()
+
         self.shares_list_view.destroy()
+        self.filter_list_view.destroy()
+
         self.__dict__.clear()
 
     def set_settings(self):
 
         self.shares_list_view.clear()
+        self.filter_list_view.clear()
+
         self.shares_list_view.freeze()
+        self.filter_list_view.freeze()
 
         self.application.preferences.set_widgets_data(self.options)
 
         self.shared_folders = config.sections["transfers"]["shared"][:]
         self.buddy_shared_folders = config.sections["transfers"]["buddyshared"][:]
         self.trusted_shared_folders = config.sections["transfers"]["trustedshared"][:]
+        self.share_filters = config.sections["transfers"]["share_filters"][:]
 
         for virtual_name, folder_path, *_unused in self.shared_folders:
             self.shares_list_view.add_row(
@@ -694,7 +750,14 @@ class SharesPage:
             self.shares_list_view.add_row(
                 [virtual_name, folder_path, _("Trusted")], select_row=False)
 
+        for sfilter in self.share_filters:
+            applies_to = _("Folders") if sfilter.endswith("\\") else _("Files")
+            self.filter_list_view.add_row([sfilter, applies_to], select_row=False)
+
         self.shares_list_view.unfreeze()
+        self.filter_list_view.unfreeze()
+
+        self.file_manager_button.set_visible(not self.application.isolated_mode)
 
     def get_settings(self):
 
@@ -703,6 +766,7 @@ class SharesPage:
                 "shared": self.shared_folders[:],
                 "buddyshared": self.buddy_shared_folders[:],
                 "trustedshared": self.trusted_shared_folders[:],
+                "share_filters": self.share_filters[:],
                 "rescanonstartup": self.rescan_on_startup_toggle.get_active(),
                 "rescan_shares_daily": self.rescan_daily_toggle.get_active(),
                 "rescan_shares_hour": self.rescan_hour_combobox.get_selected_id(),
@@ -815,6 +879,104 @@ class SharesPage:
 
     def on_select_row(self, _list_view, iterator):
         self.file_manager_button.set_sensitive(iterator is not None)
+
+    def process_filter(self, sfilter, applies_to):
+
+        sfilter = sfilter.replace("/", "\\").rstrip("\\")
+
+        if applies_to == _("Folders"):
+            suffix = "\\*"
+            if sfilter.endswith(suffix):
+                sfilter = sfilter[:-len(suffix)]
+            sfilter += "\\"
+
+        return sfilter
+
+    def on_add_filter_response(self, dialog, _response_id, _data):
+
+        sfilter = dialog.get_entry_value()
+        applies_to = self.FILTER_LEVELS[dialog.get_second_entry_value()]
+        sfilter = self.process_filter(sfilter, applies_to)
+        iterator = self.filter_list_view.iterators.get(sfilter)
+
+        if iterator is not None:
+            return
+
+        self.share_filters.append(sfilter)
+        self.filter_list_view.add_row([sfilter, applies_to])
+
+    def on_add_filter(self, *_args):
+
+        EntryDialog(
+            parent=self.application.preferences,
+            title=_("Add Share Filter"),
+            message=self.filter_syntax_description + "\n\n" + _("Enter a new share filter:"),
+            second_droplist=self.FILTER_LEVELS,
+            use_second_entry=True,
+            second_entry_editable=False,
+            action_button_label=_("_Add"),
+            callback=self.on_add_filter_response,
+            droplist=self.filter_list_view.iterators
+        ).present()
+
+    def on_edit_filter_response(self, dialog, _response_id, iterator):
+
+        new_sfilter = dialog.get_entry_value()
+        new_applies_to = self.FILTER_LEVELS[dialog.get_second_entry_value()]
+        new_sfilter = self.process_filter(new_sfilter, new_applies_to)
+
+        sfilter = self.filter_list_view.get_row_value(iterator, "filter")
+        orig_iterator = self.filter_list_view.iterators[sfilter]
+
+        self.share_filters.remove(sfilter)
+        self.filter_list_view.remove_row(orig_iterator)
+
+        self.share_filters.append(new_sfilter)
+        self.filter_list_view.add_row([new_sfilter, new_applies_to])
+
+    def on_edit_filter(self, *_args):
+
+        for iterator in self.filter_list_view.get_selected_rows():
+            sfilter = self.filter_list_view.get_row_value(iterator, "filter")
+            applies_to = self.filter_list_view.get_row_value(iterator, "applies_to")
+
+            EntryDialog(
+                parent=self.application.preferences,
+                title=_("Edit Share Filter"),
+                message=self.filter_syntax_description + "\n\n" + _("Modify the following share filter:"),
+                second_default={v: k for k, v in self.FILTER_LEVELS.items()}[applies_to],
+                second_droplist=self.FILTER_LEVELS,
+                use_second_entry=True,
+                second_entry_editable=False,
+                action_button_label=_("_Edit"),
+                callback=self.on_edit_filter_response,
+                callback_data=iterator,
+                default=sfilter
+            ).present()
+            return
+
+    def on_remove_filter(self, *_args):
+
+        for iterator in reversed(list(self.filter_list_view.get_selected_rows())):
+            sfilter = self.filter_list_view.get_row_value(iterator, "filter")
+            orig_iterator = self.filter_list_view.iterators[sfilter]
+
+            self.share_filters.remove(sfilter)
+            self.filter_list_view.remove_row(orig_iterator)
+
+    def on_default_filters(self, *_args):
+
+        self.share_filters.clear()
+        self.filter_list_view.clear()
+        self.filter_list_view.freeze()
+
+        self.share_filters = config.defaults["transfers"]["share_filters"][:]
+
+        for sfilter in config.defaults["transfers"]["share_filters"]:
+            applies_to = _("Folders") if sfilter.endswith("\\") else _("Files")
+            self.filter_list_view.add_row([sfilter, applies_to], select_row=False)
+
+        self.filter_list_view.unfreeze()
 
 
 class UploadsPage:
@@ -1101,22 +1263,31 @@ class IgnoredUsersPage:
 
     def on_add_ignored_user_response(self, dialog, _response_id, _data):
 
-        user = dialog.get_entry_value().strip()
+        users = dialog.get_entry_value().split("\n")
+        is_first_item = True
 
-        if user and user not in self.ignored_users:
+        for user in users:
+            user = user.strip()
+
+            if not user or user in self.ignored_users:
+                continue
+
             self.ignored_users.append(user)
-            self.ignored_users_list_view.add_row([str(user)])
+            self.ignored_users_list_view.add_row([str(user)], select_row=is_first_item)
 
             self.added_users.add(user)
             self.removed_users.discard(user)
+
+            is_first_item = False
 
     def on_add_ignored_user(self, *_args):
 
         EntryDialog(
             parent=self.application.preferences,
-            title=_("Ignore User"),
-            message=_("Enter the name of the user you want to ignore:"),
+            title=_("Ignore Users"),
+            message=_("Enter a list of usernames you want to ignore:"),
             action_button_label=_("_Add"),
+            multiline=True,
             callback=self.on_add_ignored_user_response
         ).present()
 
@@ -1136,28 +1307,37 @@ class IgnoredUsersPage:
 
     def on_add_ignored_ip_response(self, dialog, _response_id, _data):
 
-        ip_address = dialog.get_entry_value().strip()
+        ip_addresses = dialog.get_entry_value().split("\n")
+        is_first_item = True
 
-        if not core.network_filter.is_ip_address(ip_address):
-            return
+        for ip_address in ip_addresses:
+            ip_address = ip_address.strip()
 
-        if ip_address not in self.ignored_ips:
+            if not core.network_filter.is_ip_address(ip_address):
+                continue
+
+            if ip_address in self.ignored_ips:
+                continue
+
             user = core.network_filter.get_online_username(ip_address) or ""
             user_ip_pair = (user, ip_address)
 
             self.ignored_ips[ip_address] = user
-            self.ignored_ips_list_view.add_row([ip_address, user])
+            self.ignored_ips_list_view.add_row([ip_address, user], select_row=is_first_item)
 
             self.added_ips.add(user_ip_pair)
             self.removed_ips.discard(user_ip_pair)
+
+            is_first_item = False
 
     def on_add_ignored_ip(self, *_args):
 
         EntryDialog(
             parent=self.application.preferences,
-            title=_("Ignore IP Address"),
-            message=_("Enter an IP address you want to ignore:") + " " + _("* is a wildcard"),
+            title=_("Ignore IP Addresses"),
+            message=_("Enter a list of IP addresses you want to ignore:") + " " + _("* is a wildcard"),
             action_button_label=_("_Add"),
+            multiline=True,
             callback=self.on_add_ignored_ip_response
         ).present()
 
@@ -1310,22 +1490,31 @@ class BannedUsersPage:
 
     def on_add_banned_user_response(self, dialog, _response_id, _data):
 
-        user = dialog.get_entry_value().strip()
+        users = dialog.get_entry_value().split("\n")
+        is_first_item = True
 
-        if user and user not in self.banned_users:
+        for user in users:
+            user = user.strip()
+
+            if not user or user in self.banned_users:
+                continue
+
             self.banned_users.append(user)
-            self.banned_users_list_view.add_row([user])
+            self.banned_users_list_view.add_row([user], select_row=is_first_item)
 
             self.added_users.add(user)
             self.removed_users.discard(user)
+
+            is_first_item = False
 
     def on_add_banned_user(self, *_args):
 
         EntryDialog(
             parent=self.application.preferences,
-            title=_("Ban User"),
-            message=_("Enter the name of the user you want to ban:"),
+            title=_("Ban Users"),
+            message=_("Enter a list of usernames you want to ban:"),
             action_button_label=_("_Add"),
+            multiline=True,
             callback=self.on_add_banned_user_response
         ).present()
 
@@ -1345,28 +1534,37 @@ class BannedUsersPage:
 
     def on_add_banned_ip_response(self, dialog, _response_id, _data):
 
-        ip_address = dialog.get_entry_value().strip()
+        ip_addresses = dialog.get_entry_value().split("\n")
+        is_first_item = True
 
-        if not core.network_filter.is_ip_address(ip_address):
-            return
+        for ip_address in ip_addresses:
+            ip_address = ip_address.strip()
 
-        if ip_address not in self.banned_ips:
+            if not core.network_filter.is_ip_address(ip_address):
+                continue
+
+            if ip_address in self.banned_ips:
+                continue
+
             user = core.network_filter.get_online_username(ip_address) or ""
             user_ip_pair = (user, ip_address)
 
             self.banned_ips[ip_address] = user
-            self.banned_ips_list_view.add_row([ip_address, user])
+            self.banned_ips_list_view.add_row([ip_address, user], select_row=is_first_item)
 
             self.added_ips.add(user_ip_pair)
             self.removed_ips.discard(user_ip_pair)
+
+            is_first_item = False
 
     def on_add_banned_ip(self, *_args):
 
         EntryDialog(
             parent=self.application.preferences,
-            title=_("Ban IP Address"),
-            message=_("Enter an IP address you want to ban:") + " " + _("* is a wildcard"),
+            title=_("Ban IP Addresses"),
+            message=_("Enter a list of IP addresses you want to ban:") + " " + _("* is a wildcard"),
             action_button_label=_("_Add"),
+            multiline=True,
             callback=self.on_add_banned_ip_response
         ).present()
 
@@ -1590,20 +1788,27 @@ class ChatsPage:
 
     def on_add_censored_response(self, dialog, _response_id, _data):
 
-        pattern = dialog.get_entry_value()
+        patterns = dialog.get_entry_value().split("\n")
+        is_first_item = True
 
-        if pattern and pattern not in self.censored_patterns:
+        for pattern in patterns:
+            if not pattern or pattern in self.censored_patterns:
+                continue
+
             self.censored_patterns.append(pattern)
-            self.censor_list_view.add_row([pattern])
+            self.censor_list_view.add_row([pattern], select_row=is_first_item)
+
+            is_first_item = False
 
     def on_add_censored(self, *_args):
 
         EntryDialog(
             parent=self.application.preferences,
-            title=_("Censor Pattern"),
-            message=_("Enter a pattern you want to censor. Add spaces around the pattern if you don't "
+            title=_("Censor Patterns"),
+            message=_("Enter a list of patterns you want to censor. Add spaces around the pattern if you don't "
                       "want to match strings inside words (may fail at the beginning and end of lines)."),
             action_button_label=_("_Add"),
+            multiline=True,
             callback=self.on_add_censored_response
         ).present()
 
@@ -3344,7 +3549,8 @@ class Preferences(Dialog):
         for section, key in (
             ("transfers", "shared"),
             ("transfers", "buddyshared"),
-            ("transfers", "trustedshared")
+            ("transfers", "trustedshared"),
+            ("transfers", "share_filters")
         ):
             rescan_required = self.has_option_changed(options, section, key)
 

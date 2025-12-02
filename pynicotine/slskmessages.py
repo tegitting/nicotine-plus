@@ -120,7 +120,7 @@ class TransferRejectReason:
 
 class FileAttribute:
     BITRATE = 0
-    DURATION = 1
+    LENGTH = 1
     VBR = 2
     ENCODER = 3
     SAMPLE_RATE = 4
@@ -352,16 +352,39 @@ class SlskMessage:
         return f"<{self.msg_type} - {self.__class__.__name__}> {attrs}"
 
 
+class FileAttributes:
+    __slots__ = ("bitrate", "length", "vbr", "sample_rate", "bit_depth")
+
+    def __init__(self, bitrate=None, length=None, vbr=None, sample_rate=None, bit_depth=None):
+        self.bitrate = bitrate
+        self.length = length
+        self.vbr = vbr
+        self.sample_rate = sample_rate
+        self.bit_depth = bit_depth
+
+    def as_dict(self):
+        attributes = {}
+
+        if self.bitrate is not None:
+            attributes[FileAttribute.BITRATE] = self.bitrate
+
+        if self.length is not None:
+            attributes[FileAttribute.LENGTH] = self.length
+
+        if self.vbr is not None:
+            attributes[FileAttribute.VBR] = self.vbr
+
+        if self.sample_rate is not None:
+            attributes[FileAttribute.SAMPLE_RATE] = self.sample_rate
+
+        if self.bit_depth is not None:
+            attributes[FileAttribute.BIT_DEPTH] = self.bit_depth
+
+        return attributes
+
+
 class FileListMessage(SlskMessage):
     __slots__ = ()
-
-    VALID_FILE_ATTRIBUTES = {
-        FileAttribute.BITRATE,
-        FileAttribute.DURATION,
-        FileAttribute.VBR,
-        FileAttribute.SAMPLE_RATE,
-        FileAttribute.BIT_DEPTH
-    }
 
     @classmethod
     def pack_file_info(cls, fileinfo):
@@ -431,7 +454,7 @@ class FileListMessage(SlskMessage):
             # Only unpack the first 4 bytes to work around this issue.
 
             pos, size = cls.unpack_uint32(message, pos)
-            pos, _garbage = cls.unpack_uint32(message, pos)
+            pos += 4
 
         else:
             # Everything looks fine, parse size as usual
@@ -442,8 +465,7 @@ class FileListMessage(SlskMessage):
     @classmethod
     def unpack_file_attributes(cls, message, pos):
 
-        attrs = {}
-        valid_file_attributes = cls.VALID_FILE_ATTRIBUTES
+        attrs = FileAttributes()
 
         pos, numattr = cls.unpack_uint32(message, pos)
 
@@ -451,62 +473,31 @@ class FileListMessage(SlskMessage):
             pos, attrnum = cls.unpack_uint32(message, pos)
             pos, attr = cls.unpack_uint32(message, pos)
 
-            if attrnum in valid_file_attributes:
-                attrs[attrnum] = attr
+            if attrnum == FileAttribute.BITRATE:
+                attrs.bitrate = attr
+
+            elif attrnum == FileAttribute.LENGTH:
+                attrs.length = attr
+
+            elif attrnum == FileAttribute.VBR:
+                attrs.vbr = attr
+
+            elif attrnum == FileAttribute.SAMPLE_RATE:
+                attrs.sample_rate = attr
+
+            elif attrnum == FileAttribute.BIT_DEPTH:
+                attrs.bit_depth = attr
 
         return pos, attrs
-
-    @staticmethod
-    def parse_file_attributes(attributes):
-
-        if attributes is None:
-            attributes = {}
-
-        try:
-            bitrate = attributes.get(FileAttribute.BITRATE)
-            length = attributes.get(FileAttribute.DURATION)
-            vbr = attributes.get(FileAttribute.VBR)
-            sample_rate = attributes.get(FileAttribute.SAMPLE_RATE)
-            bit_depth = attributes.get(FileAttribute.BIT_DEPTH)
-
-        except AttributeError:
-            # Legacy attribute list format used for shares lists saved in Nicotine+ 3.2.2 and earlier
-            bitrate = length = vbr = sample_rate = bit_depth = None
-
-            if len(attributes) == 3:
-                attribute1, attribute2, attribute3 = attributes
-
-                if attribute3 in {0, 1}:
-                    bitrate = attribute1
-                    length = attribute2
-                    vbr = attribute3
-
-                elif attribute3 > 1:
-                    length = attribute1
-                    sample_rate = attribute2
-                    bit_depth = attribute3
-
-            elif len(attributes) == 2:
-                attribute1, attribute2 = attributes
-
-                if attribute2 in {0, 1}:
-                    bitrate = attribute1
-                    vbr = attribute2
-
-                elif attribute1 >= 8000 and attribute2 <= 64:
-                    sample_rate = attribute1
-                    bit_depth = attribute2
-
-                else:
-                    bitrate = attribute1
-                    length = attribute2
-
-        return bitrate, length, vbr, sample_rate, bit_depth
 
     @classmethod
     def parse_audio_quality_length(cls, filesize, attributes, always_show_bitrate=False):
 
-        bitrate, length, vbr, sample_rate, bit_depth = cls.parse_file_attributes(attributes)
+        bitrate = attributes.bitrate
+        length = attributes.length
+        vbr = attributes.vbr
+        sample_rate = attributes.sample_rate
+        bit_depth = attributes.bit_depth
 
         if bitrate is None:
             if sample_rate and bit_depth:
@@ -848,7 +839,7 @@ class IgnoreUser(ServerMessage):
 
     The server tells us a user has ignored us.
 
-    OBSOLETE, no longer used
+    OBSOLETE, no longer functional
     """
 
     __slots__ = ("user",)
@@ -870,7 +861,7 @@ class UnignoreUser(ServerMessage):
 
     The server tells us a user is no longer ignoring us.
 
-    OBSOLETE, no longer used
+    OBSOLETE, no longer functional
     """
 
     __slots__ = ("user",)
@@ -1125,7 +1116,7 @@ class FileSearchRoom(ServerMessage):
 
     We send this to the server when we search for something in a room.
 
-    OBSOLETE, use RoomSearch server message
+    OBSOLETE, superseded by RoomSearch server message
     """
 
     __slots__ = ("token", "roomid", "searchterm")
@@ -1251,7 +1242,7 @@ class SendDownloadSpeed(ServerMessage):
     We used to send this after a finished download to let the server
     update the speed statistics for a user.
 
-    OBSOLETE, use SendUploadSpeed server message
+    OBSOLETE, superseded by SendUploadSpeed server message
     """
 
     __slots__ = ("user", "speed")
@@ -1326,14 +1317,17 @@ class QueuedDownloads(ServerMessage):
     The server sends this to indicate if someone has download slots
     available or not.
 
-    OBSOLETE, no longer sent by the server
+    OBSOLETE, no longer used
     """
 
     __slots__ = ("user", "slotsfull")
 
-    def __init__(self):
+    def __init__(self, slotsfull=None):
+        self.slotsfull = slotsfull
         self.user = None
-        self.slotsfull = None
+
+    def make_network_message(self):
+        return self.pack_uint32(self.slotsfull)
 
     def parse_network_message(self, message):
         pos, self.user = self.unpack_string(message)
@@ -1483,7 +1477,7 @@ class MyRecommendations(ServerMessage):
     official Soulseek client would send a AddThingILike message for each
     missing item.
 
-    OBSOLETE, no longer used
+    OBSOLETE, no longer functional
     """
 
     __slots__ = ("my_recommendations",)
@@ -1562,7 +1556,7 @@ class AdminCommand(ServerMessage):
     We send this to the server to run an admin command (e.g. to ban or
     silence a user) if we have admin status on the server.
 
-    OBSOLETE, no longer used
+    OBSOLETE, no longer functional
     """
 
     __slots__ = ("command", "command_args")
@@ -1582,13 +1576,37 @@ class AdminCommand(ServerMessage):
         return msg
 
 
+class PlaceInLineRequest(ServerMessage):
+    """Server code 59.
+
+    OBSOLETE, superseded by PlaceInQueueRequest peer message
+    """
+
+    __slots__ = ("user", "token")
+
+    def __init__(self, user=None, token=None):
+        self.token = token
+        self.user = user
+
+    def make_network_message(self):
+        msg = bytearray()
+        msg += self.pack_string(self.user)
+        msg += self.pack_uint32(self.token)
+
+        return msg
+
+    def parse_network_message(self, message):
+        pos, self.user = self.unpack_string(message)
+        pos, self.token = self.unpack_uint32(message, pos)
+
+
 class PlaceInLineResponse(ServerMessage):
     """Server code 60.
 
     The server sends this to indicate change in place in queue while
     we're waiting for files from another peer.
 
-    OBSOLETE, use PlaceInQueueResponse peer message
+    OBSOLETE, superseded by PlaceInQueueResponse peer message
     """
 
     __slots__ = ("token", "user", "place")
@@ -3192,7 +3210,7 @@ class FileSearchRequest(PeerMessage):
     We send this to the peer when we search for a file. Alternatively,
     the peer sends this to tell us it is searching for a file.
 
-    OBSOLETE, use UserSearch server message
+    OBSOLETE, superseded by UserSearch server message
     """
 
     __slots__ = ("token", "text", "searchterm")
@@ -3478,7 +3496,7 @@ class FolderContentsResponse(PeerMessage):
             for _ in range(nfiles):
                 pos, code = self.unpack_uint8(message, pos)
                 pos, name = self.unpack_string(message, pos)
-                pos, size = self.unpack_uint64(message, pos)
+                pos, size = FileListMessage.parse_file_size(message, pos)
                 pos, ext_len = self.unpack_uint32(message, pos)  # Obsolete, ignore
                 pos, attrs = FileListMessage.unpack_file_attributes(message, pos + ext_len)
 
@@ -4084,6 +4102,7 @@ SERVER_MESSAGE_CODES = {
     GlobalRecommendations: 56,
     UserInterests: 57,
     AdminCommand: 58,             # Obsolete
+    PlaceInLineRequest: 59,       # Obsolete
     PlaceInLineResponse: 60,      # Obsolete
     RoomAdded: 62,                # Obsolete
     RoomRemoved: 63,              # Obsolete

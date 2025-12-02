@@ -560,7 +560,7 @@ class ChatRoom:
 
         self.users_list_view = TreeView(
             self.window, parent=self.users_list_container, name="chat_room", secondary_name=room,
-            persistent_sort=True, activate_row_callback=self.on_row_activated,
+            persistent_sort=True, persistent_widths=False, activate_row_callback=self.on_row_activated,
             columns={
                 # Visible columns
                 "status": {
@@ -586,25 +586,20 @@ class ChatRoom:
                     "text_weight_column": "username_weight_data",
                     "sensitive_column": "is_unignored_data"
                 },
-                "speed": {
-                    "column_type": "number",
-                    "title": _("Speed"),
-                    "width": 80,
-                    "sort_column": "speed_data",
-                    "expand_column": True,
-                    "sensitive_column": "is_unignored_data"
-                },
                 "files": {
                     "column_type": "number",
                     "title": _("Files"),
+                    "width": 80,
                     "sort_column": "files_data",
                     "expand_column": True,
-                    "sensitive_column": "is_unignored_data"
+                    "sensitive_column": "is_unignored_data",
+                    "tooltip_callback": self.on_files_tooltip
                 },
 
                 # Hidden data columns
                 "speed_data": {"data_type": GObject.TYPE_UINT},
                 "files_data": {"data_type": GObject.TYPE_UINT},
+                "folders_data": {"data_type": GObject.TYPE_UINT},
                 "username_weight_data": {"data_type": Pango.Weight},
                 "username_underline_data": {"data_type": Pango.Underline},
                 "is_unignored_data": {"data_type": GObject.TYPE_BOOLEAN}
@@ -714,7 +709,7 @@ class ChatRoom:
         flag_icon_name = get_flag_icon_name(userdata.country)
         speed = userdata.avgspeed or 0
         files = userdata.files or 0
-        h_speed = human_speed(speed) if speed > 0 else ""
+        folders = userdata.dirs or 0
         h_files = humanize(files)
         weight = Pango.Weight.NORMAL
         underline = Pango.Underline.NONE
@@ -734,10 +729,10 @@ class ChatRoom:
             status_icon_name,
             flag_icon_name,
             username,
-            h_speed,
             h_files,
             speed,
             files,
+            folders,
             weight,
             underline,
             is_unignored
@@ -962,8 +957,8 @@ class ChatRoom:
 
             self.users_list_view.set_row_values(
                 iterator,
-                column_ids=["status", "speed", "speed_data", "files", "files_data", "country"],
-                values=[status_icon_name, empty_str, empty_int, empty_str, empty_int, empty_str]
+                column_ids=["status", "files", "files_data", "folders_data", "speed_data", "country"],
+                values=[status_icon_name, empty_str, empty_int, empty_int, empty_int, empty_str]
             )
         else:
             self.users_list_view.remove_row(iterator)
@@ -1086,20 +1081,23 @@ class ChatRoom:
 
         speed = msg.avgspeed or 0
         num_files = msg.files or 0
+        num_folders = msg.dirs or 0
         column_ids = []
         column_values = []
 
         if speed != self.users_list_view.get_row_value(iterator, "speed_data"):
-            h_speed = human_speed(speed) if speed > 0 else ""
-
-            column_ids.extend(("speed", "speed_data"))
-            column_values.extend((h_speed, speed))
+            column_ids.append("speed_data")
+            column_values.append(speed)
 
         if num_files != self.users_list_view.get_row_value(iterator, "files_data"):
             h_num_files = humanize(num_files)
 
             column_ids.extend(("files", "files_data"))
             column_values.extend((h_num_files, num_files))
+
+        if num_folders != self.users_list_view.get_row_value(iterator, "folders_data"):
+            column_ids.append("files_data")
+            column_values.append(num_files)
 
         if column_ids:
             self.users_list_view.set_row_values(iterator, column_ids, column_values)
@@ -1200,6 +1198,18 @@ class ChatRoom:
             widget.grab_focus()
 
         return True
+
+    def on_files_tooltip(self, treeview, iterator):
+
+        num_files = treeview.get_row_value(iterator, "files_data")
+        num_folders = treeview.get_row_value(iterator, "folders_data")
+        speed = treeview.get_row_value(iterator, "speed_data")
+
+        return (
+            _("Files: %(num_files)s") % {"num_files": humanize(num_files)} + "\n"
+            + _("Folders: %(num_folders)s") % {"num_folders": humanize(num_folders)} + "\n"
+            + _("Speed: %(speed)s") % {"speed": human_speed(speed)}
+        )
 
     def on_find_activity_log(self, *_args):
         self.activity_search_bar.set_visible(True)

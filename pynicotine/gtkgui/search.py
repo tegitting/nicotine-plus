@@ -10,6 +10,7 @@ import operator
 import os
 import re
 
+from collections import deque
 from itertools import islice
 
 from gi.repository import GLib
@@ -564,7 +565,8 @@ class Search:
                     "title": _("Quality"),
                     "width": 160,
                     "sort_column": "bitrate_data",
-                    "sensitive_column": "public_data"
+                    "sensitive_column": "public_data",
+                    "tooltip_callback": self.on_quality_tooltip
                 },
                 "length": {
                     "column_type": "number",
@@ -800,9 +802,15 @@ class Search:
 
         update_ui = False
         search = core.search.searches[self.token]
-        row_id = 0
+        dummy_row_id = 0
 
-        for _code, file_path, size, _ext, file_attributes, *_unused in result_list:
+        # For performance reasons, we prepend rows to our treeview. Since we reverse the result
+        # lists before inserting the rows, we need to decrement the new row ids to preserve the
+        # correct sort order. We don't know how many folder parent rows will be added yet (if
+        # any), so set the end row id to the maximum possible number of new rows.
+        end_row_id = self.row_id = self.row_id + (len(result_list) * 2) + 1
+
+        for _code, file_path, size, _ext, file_attributes, *_unused in reversed(result_list):
             if self.num_results_found >= config.sections["searches"]["max_displayed_results"]:
                 break
 
@@ -858,13 +866,14 @@ class Search:
                     length,
                     not is_private,
                     SearchResultFile(file_path, file_attributes),
-                    row_id
+                    dummy_row_id
                 ]
             )
 
             if is_result_visible:
                 update_ui = True
 
+        self.row_id = end_row_id + 1
         return update_ui
 
     def file_search_response(self, msg):
@@ -984,8 +993,8 @@ class Search:
                 if expand_allowed:
                     expand_user = self.grouping_mode == "folder_grouping" or self.expand_button.get_active()
 
-                self.row_id += 1
-                self.users[user] = (iterator, [])
+                self.row_id -= 1
+                self.users[user] = (iterator, deque())
 
             user_iterator, user_child_iterators = self.users[user]
 
@@ -1021,8 +1030,8 @@ class Search:
                     )
                     user_child_iterators.append(iterator)
                     expand_folder = expand_allowed and self.expand_button.get_active()
-                    self.row_id += 1
-                    self.folders[user_folder_path] = (iterator, [])
+                    self.row_id -= 1
+                    self.folders[user_folder_path] = (iterator, deque())
 
                 row = row[:]
                 row[4] = row[5] = ""  # Folder not visible for file row if "group by folder" is enabled
@@ -1035,18 +1044,18 @@ class Search:
 
         else:
             if user not in self.users:
-                self.users[user] = (None, [])
+                self.users[user] = (None, deque())
 
             user_iterator, user_child_iterators = self.users[user]
 
         row[18] = self.row_id
         iterator = self.tree_view.add_row(row, select_row=False, parent_iterator=parent_iterator)
-        self.row_id += 1
+        self.row_id -= 1
 
         if user_folder_child_iterators is not None:
-            user_folder_child_iterators.append(iterator)
+            user_folder_child_iterators.appendleft(iterator)
         else:
-            user_child_iterators.append(iterator)
+            user_child_iterators.appendleft(iterator)
 
         if expand_user:
             self.tree_view.expand_row(user_iterator)
@@ -1301,11 +1310,19 @@ class Search:
 
     def update_model(self):
 
+        # For performance reasons, we prepend rows to our treeview. Since we reverse the result
+        # lists before inserting the rows, we need to decrement the new row ids to preserve the
+        # correct sort order. We don't know how many user/folder parent rows will be added yet (if
+        # any), so set the end row id to the maximum possible number of new rows.
+        end_row_id = self.row_id = self.row_id + len(self.all_data) * 3
+
         self.tree_view.freeze()
 
         for row in self.all_data:
             if self.check_filter(row):
                 self.add_row_to_model(row)
+
+        self.row_id = end_row_id + 1
 
         # Update number of results
         self.update_result_counter()
@@ -1498,6 +1515,20 @@ class Search:
             return None
 
         return file_data.path
+
+    def on_quality_tooltip(self, treeview, iterator):
+
+        file_data = treeview.get_row_value(iterator, "file_data")
+
+        if not file_data or not file_data.attributes:
+            return None
+
+        # Always include bitrate in tooltip
+        size = treeview.get_row_value(iterator, "size_data")
+        h_quality, _bitrate, _h_length, _length = FileListMessage.parse_audio_quality_length(
+            size, file_data.attributes, always_show_bitrate=True)
+
+        return h_quality
 
     def on_row_activated(self, treeview, iterator, _column):
 
