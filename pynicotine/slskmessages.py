@@ -1215,6 +1215,16 @@ class ServerPing(ServerMessage):
 class SendConnectToken(ServerMessage):
     """Server code 33.
 
+    This message used to be sent together with the PeerInit message when
+    connecting to a user, with the same non-zero token included in both. The
+    recipient could then cross-check the username and token, in order to reject
+    spoofed connection attempts.
+
+    While the server still recognizes and forwards this message today, no
+    clients use it anymore. The lack of adoption by clients in the past has
+    effectively rendered the message unusable, since its reintroduction in a
+    client would isolate the client from the rest of the network.
+
     OBSOLETE, no longer used
     """
 
@@ -1311,11 +1321,15 @@ class GetUserStats(ServerMessage):
         pos, self.dirs = self.unpack_uint32(message, pos)
 
 
-class QueuedDownloads(ServerMessage):
+class UploadSlotsFull(ServerMessage):
     """Server code 40.
 
-    The server sends this to indicate if someone has download slots
-    available or not.
+    We send this to the server to indicate whether our upload slots are fully
+    occupied or not. The server broadcasts the message to joined rooms.
+
+    The official Soulseek client used to send this message on login, as well as
+    when upload slots filled up or became available. Users with full slots were
+    grayed out in room user lists.
 
     OBSOLETE, no longer used
     """
@@ -3015,8 +3029,10 @@ class PierceFireWall(PeerInitMessage):
 class PeerInit(PeerInitMessage):
     """Peer init code 1.
 
-    This message is sent to initiate a direct connection to another
-    peer. The token is apparently always 0 and ignored.
+    This message is sent to initiate a direct connection to another peer. The
+    token is always zero and ignored today, but used to be non-zero and
+    included in a concurrent SendConnectToken server message for connection
+    verification.
     """
 
     __slots__ = ("sock", "init_user", "target_user", "conn_type", "indirect_token", "created_time", "outgoing_msgs")
@@ -4091,7 +4107,7 @@ SERVER_MESSAGE_CODES = {
     SendDownloadSpeed: 34,        # Obsolete
     SharedFoldersFiles: 35,
     GetUserStats: 36,
-    QueuedDownloads: 40,          # Obsolete
+    UploadSlotsFull: 40,          # Obsolete
     Relogged: 41,
     UserSearch: 42,
     SimilarRecommendations: 50,   # Obsolete

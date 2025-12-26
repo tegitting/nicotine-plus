@@ -28,7 +28,7 @@ from pynicotine.utils import humanize
 
 class Download(Dialog):
 
-    def __init__(self, application):
+    def __init__(self, application, download_callback=None):
 
         (
             self.cancel_button,
@@ -63,15 +63,16 @@ class Download(Dialog):
         application.add_window(self.widget)
 
         self.application = application
+        self.download_callback = download_callback
         self.file_properties = None
         self.parent_iterators = {}
         self.initial_selected_iterators = set()
         self.folder_names = {}
         self.pending_folders = {}
+        self.failed_usernames = set()
         self.num_files = {}
         self.num_selected_files = {}
         self.indeterminate_progress = False
-        self.select_all = False
         self.total_selected_size = 0
 
         self.download_folder_button = FileChooserButton(
@@ -93,6 +94,13 @@ class Download(Dialog):
                     "width": 150,
                     "expand_column": True,
                     "default_sort_type": "ascending"
+                },
+                "incomplete": {
+                    "column_type": "icon",
+                    "title": _("Incomplete"),
+                    "width": 25,
+                    "hide_header": True,
+                    "tooltip_callback": self.on_incomplete_tooltip
                 },
                 "size": {
                     "column_type": "number",
@@ -160,6 +168,7 @@ class Download(Dialog):
         self.parent_iterators.clear()
         self.initial_selected_iterators.clear()
         self.pending_folders.clear()
+        self.failed_usernames.clear()
         self.num_files.clear()
         self.num_selected_files.clear()
         self.tree_view.clear()
@@ -168,7 +177,7 @@ class Download(Dialog):
 
         self.set_finished()
 
-    def update_files(self, data, partial_files=True, select_all=False):
+    def update_files(self, data, partial_files=True):
 
         self.tree_view.freeze()
 
@@ -177,9 +186,6 @@ class Download(Dialog):
         self.download_folder_button.set_path(
             self.application.previous_download_folder or core.downloads.get_default_download_folder()
         )
-
-        self.select_all = select_all
-        has_unselected_files = False
 
         for username, file_path, size, file_attributes, selected, root_folder_path in reversed(sorted(
             data, key=lambda x: len(x[0])
@@ -222,22 +228,17 @@ class Download(Dialog):
                 self.num_files[username][folder_path] = 0
                 self.num_selected_files[username][folder_path] = 0
 
-                if not selected:
-                    has_unselected_files = True
-                    inconsistent = True
-                else:
-                    inconsistent = False
-
                 parent_iterator = self.tree_view.add_row(
                     [
                         folder_name,
                         "",
-                        select_all or selected,
+                        "",
+                        False,
                         username,
                         folder_path,
                         0,
                         {},
-                        inconsistent,
+                        False,
                         username + folder_path
                     ],
                     select_row=False
@@ -245,14 +246,14 @@ class Download(Dialog):
                 expand_parent = True
 
                 self.parent_iterators[username + folder_path] = (parent_iterator, deque())
-                self.initial_selected_iterators.add(parent_iterator)
 
             parent_iterator, child_iterators = self.parent_iterators[username + folder_path]
             iterator = self.tree_view.add_row(
                 [
                     file_name,
+                    "",
                     human_size(size),
-                    select_all or selected,
+                    True,
                     username,
                     folder_path,
                     size,
@@ -267,12 +268,13 @@ class Download(Dialog):
 
             if selected:
                 self.initial_selected_iterators.add(iterator)
-            else:
-                self.initial_selected_iterators.discard(parent_iterator)
 
-            if select_all or selected:
-                self.total_selected_size += size
-                self.num_selected_files[username][folder_path] += 1
+                if parent_iterator not in self.initial_selected_iterators:
+                    self.tree_view.set_row_value(parent_iterator, "selected", True)
+                    self.initial_selected_iterators.add(parent_iterator)
+
+            self.total_selected_size += size
+            self.num_selected_files[username][folder_path] += 1
 
             if expand_parent:
                 self.tree_view.expand_row(parent_iterator)
@@ -281,16 +283,11 @@ class Download(Dialog):
 
         if partial_files:
             self.set_in_progress()
-
-        self.tree_view.unfreeze()
-
-        if has_unselected_files:
-            return
+        else:
+            self.select_initial_button.set_visible(False)
 
         self.unselect_all_button.set_visible(True)
-
-        if not partial_files:
-            self.select_initial_button.set_visible(False)
+        self.tree_view.unfreeze()
 
     def update_title(self):
 
@@ -351,6 +348,9 @@ class Download(Dialog):
                 file_attributes=file_attributes, paused=paused
             )
 
+        if self.download_callback is not None:
+            self.download_callback(files)
+
         self.application.previous_download_folder = self.download_folder_button.get_path(dynamic=False)
         self.close()
 
@@ -363,6 +363,9 @@ class Download(Dialog):
         return repeat
 
     def set_in_progress(self):
+
+        if self.indeterminate_progress:
+            return
 
         self.indeterminate_progress = True
 
@@ -382,15 +385,27 @@ class Download(Dialog):
 
         self.info_bar.set_visible(False)
 
-    def set_failed(self):
+    def set_failed(self, username, folder_path):
 
-        if not self.indeterminate_progress:
-            return
+        self.failed_usernames.add(username)
+        num_users = len(self.failed_usernames)
 
-        self.set_finished()
-        self.info_bar.show_error_message(
-            _("Failed to request folder contents.")
-        )
+        parent_iterator, _child_iterators = self.parent_iterators[username + folder_path]
+        self.tree_view.set_row_value(parent_iterator, "incomplete", "dialog-warning-symbolic")
+
+        if len(self.pending_folders) == num_users:
+            self.set_finished()
+
+        if num_users == 1:
+            message = _("Unable to request folder contents from user %(user)s") % {"user": username}
+        else:
+            message = ngettext(
+                "Unable to request folder contents from %(num)s user",
+                "Unable to request folder contents from %(num)s users",
+                num_users
+            ) % {"num": num_users}
+
+        self.info_bar.show_error_message(message)
         self.info_bar.set_visible(True)
 
     def reset_selected_count(self):
@@ -406,7 +421,7 @@ class Download(Dialog):
         self.tree_view.freeze()
 
         username = msg.username
-        selected = self.select_all
+        selected = True
         has_added_file = False
 
         for folder_path, files in msg.list.items():
@@ -428,6 +443,7 @@ class Download(Dialog):
                 iterator = self.tree_view.add_row(
                     [
                         file_name,
+                        "",
                         human_size(size),
                         selected,
                         username,
@@ -455,9 +471,11 @@ class Download(Dialog):
                     unselected_parent = True
 
             if not files:
-                self.set_failed()
+                self.set_failed(username, folder_path)
 
             self.pending_folders[username].remove(folder_path)
+            self.failed_usernames.discard(username)
+            self.tree_view.set_row_value(parent_iterator, "incomplete", "")
 
             if not self.pending_folders[username]:
                 del self.pending_folders[username]
@@ -472,7 +490,7 @@ class Download(Dialog):
             self.set_finished()
 
         elif not msg.list:
-            self.set_failed()
+            self.set_failed(username, msg.dir)
 
         self.tree_view.unfreeze()
 
@@ -484,11 +502,21 @@ class Download(Dialog):
         if folder_path not in self.pending_folders[username]:
             return
 
-        self.set_failed()
+        self.failed_usernames.add(username)
+        self.set_failed(username, folder_path)
 
     def server_disconnect(self, *_args):
-        if self.indeterminate_progress:
-            self.set_failed()
+
+        if not self.indeterminate_progress:
+            return
+
+        for username, folders in self.pending_folders.items():
+            for folder_path in folders:
+                self.set_failed(username, folder_path)
+
+    def on_incomplete_tooltip(self, treeview, iterator):
+        username = treeview.get_row_value(iterator, "user_data")
+        return _("Incomplete Folder Contents (%(user)s)") % {"user": username}
 
     def on_popup_menu(self, menu, _widget):
 
@@ -515,8 +543,13 @@ class Download(Dialog):
         self.set_in_progress()
 
         for username, folders in self.pending_folders.items():
+            if username not in self.failed_usernames:
+                continue
+
             for folder_path in folders:
                 core.downloads.request_folder(username, folder_path)
+
+        self.failed_usernames.clear()
 
     def on_rename_response(self, dialog, _response_id, iterator):
 

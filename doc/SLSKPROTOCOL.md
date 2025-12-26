@@ -5,7 +5,7 @@
 
 # Soulseek Protocol Documentation
 
-[Last updated on November 30, 2025](https://github.com/nicotine-plus/nicotine-plus/commits/master/doc/SLSKPROTOCOL.md)
+[Last updated on December 20, 2025](https://github.com/nicotine-plus/nicotine-plus/commits/master/doc/SLSKPROTOCOL.md)
 
 Since the official Soulseek client and server is proprietary software, this
 documentation has been compiled thanks to years of reverse engineering efforts.
@@ -260,7 +260,7 @@ server, but it handles the protocol well enough (and can be modified).
 | `34`   | [Send Download Speed](#server-code-34) `OBSOLETE`              |
 | `35`   | [Shared Folders & Files](#server-code-35)                      |
 | `36`   | [Get User Stats](#server-code-36)                              |
-| `40`   | [Queued Downloads](#server-code-40) `OBSOLETE`                 |
+| `40`   | [Upload Slots Full](#server-code-40) `OBSOLETE`                |
 | `41`   | [Kicked from Server](#server-code-41)                          |
 | `42`   | [User Search](#server-code-42)                                 |
 | `50`   | [Similar Recommendations](#server-code-50) `OBSOLETE`          |
@@ -614,7 +614,8 @@ Requirements include:
         5.  **uint32** *dirs*
     8.  **uint32** *number of slotsfull*
     9.  Iterate for *number of slotsfull*
-        1.  **uint32** *slotsfull*
+        1.  **uint32** *slotsfull*  
+            Boolean value `1` or `0`, see [UploadSlotsFull](#server-code-40)
     10. **uint32** *number of user countries*
     11. Iterate for *number of user countries*
         1.  **string** *countrycode*  
@@ -659,7 +660,8 @@ The server tells us someone has just joined a room we're in.
     6.  **uint32** *unknown*
     7.  **uint32** *files*
     8.  **uint32** *dirs*
-    9.  **uint32** *slotsfull*
+    9.  **uint32** *slotsfull*  
+        Boolean value `1` or `0`, see [UploadSlotsFull](#server-code-40)
     10. **string** *countrycode*  
         Uppercase country code
 
@@ -834,6 +836,16 @@ Nicotine+ uses TCP keepalive instead of sending this message.
 
 **OBSOLETE, no longer used**
 
+This message used to be sent together with the [PeerInit](#peer-init-code-1)
+message when connecting to a user, with the same non-zero token included in
+both. The recipient could then cross-check the username and token, in order to
+reject spoofed connection attempts.
+
+While the server still recognizes and forwards this message today, no clients
+use it anymore. The lack of adoption by clients in the past has effectively
+rendered the message unusable, since its reintroduction in a client would
+isolate the client from the rest of the network.
+
 ### Data Order
 
   - Send
@@ -902,20 +914,26 @@ message to the server, but [WatchUser](#server-code-5) should be used instead.
 
 ## Server Code 40
 
-### QueuedDownloads
+### UploadSlotsFull
 
 **OBSOLETE, no longer used**
 
-The server sends this to indicate if someone has download slots available or
-not.
+We send this to the server to indicate whether our upload slots are fully
+occupied or not. The server broadcasts the message to joined rooms.
+
+The official Soulseek client used to send this message on login, as well as
+when upload slots filled up or became available. Users with full slots were
+grayed out in room user lists.
 
 ### Data Order
 
   - Send
-    1.  **uint32** *slotsfull*
+    1.  **uint32** *slotsfull*  
+        Boolean value `1` or `0`
   - Receive
     1.  **string** *username*
-    2.  **uint32** *slotsfull*
+    2.  **uint32** *slotsfull*  
+        Boolean value `1` or `0`
 
 
 ## Server Code 41
@@ -1292,7 +1310,8 @@ We send this to get a global list of all users online.
         5.  **uint32** *dirs*
     7.  **uint32** *number of slotsfull*
     8.  Iterate for *number of slotsfull*
-        1.  **uint32** *slotsfull*
+        1.  **uint32** *slotsfull*  
+            Boolean value `1` or `0`, see [UploadSlotsFull](#server-code-40)
     9. **uint32** *number of usercountries*
     10. Iterate for *number of usercountries*
         1.  **string** *countrycode*  
@@ -2399,7 +2418,9 @@ See also: [Peer Connection Message Order](#modern-peer-connection-message-order)
 ### PeerInit
 
 This message is sent to initiate a direct connection to another peer. The token
-is apparently always 0 and ignored.
+is always zero and ignored today, but used to be non-zero and included in a
+concurrent [SendConnectToken](#server-code-33) server message for connection
+verification.
 
 See also: [Peer Connection Message Order](#modern-peer-connection-message-order)
 

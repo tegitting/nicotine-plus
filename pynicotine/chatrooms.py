@@ -208,6 +208,9 @@ class ChatRooms:
             for word, replacement in config.sections["words"]["autoreplaced"].items():
                 message = message.replace(str(word), str(replacement))
 
+        # Server rejects messages containing newlines, filter them
+        message = message.replace("\r", "").replace("\n", " ")
+
         core.send_message_to_server(SayChatroom(room, message))
         core.pluginhandler.outgoing_public_chat_notification(room, message)
 
@@ -286,13 +289,16 @@ class ChatRooms:
 
         if private_room is None:
             private_room = self.private_rooms[room] = PrivateRoom(room)
+            core.pluginhandler.private_room_added_notification(room)
 
         if owner:
             private_room.owner = owner
+            core.pluginhandler.private_room_member_added_notification(room, owner)
 
         if members:
             for member in members:
                 private_room.members.add(member)
+                core.pluginhandler.private_room_member_added_notification(room, member)
 
         if operators:
             for operator in operators:
@@ -342,16 +348,22 @@ class ChatRooms:
 
         private_room = self.private_rooms.get(msg.room)
 
-        if private_room is not None:
-            private_room.members.add(msg.user)
+        if private_room is None:
+            return
+
+        private_room.members.add(msg.user)
+        core.pluginhandler.private_room_member_added_notification(msg.room, msg.user)
 
     def _private_room_remove_user(self, msg):
         """Server code 135."""
 
         private_room = self.private_rooms.get(msg.room)
 
-        if private_room is not None:
-            private_room.members.discard(msg.user)
+        if private_room is None:
+            return
+
+        private_room.members.discard(msg.user)
+        core.pluginhandler.private_room_member_removed_notification(msg.room, msg.user)
 
     def _private_room_added(self, msg):
         """Server code 139."""
@@ -370,8 +382,11 @@ class ChatRooms:
     def _private_room_removed(self, msg):
         """Server code 140."""
 
-        if msg.room in self.private_rooms:
-            del self.private_rooms[msg.room]
+        if msg.room not in self.private_rooms:
+            return
+
+        core.pluginhandler.private_room_removed_notification(msg.room)
+        del self.private_rooms[msg.room]
 
     def _private_room_toggle(self, msg):
         """Server code 141."""
