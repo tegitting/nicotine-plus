@@ -246,7 +246,6 @@ class ChatRooms:
             return
 
         core.send_message_to_server(PrivateRoomDisown(room))
-        del self.private_rooms[room]
 
     def request_private_room_cancel_membership(self, room):
 
@@ -254,7 +253,6 @@ class ChatRooms:
             return
 
         core.send_message_to_server(PrivateRoomCancelMembership(room))
-        del self.private_rooms[room]
 
     def request_private_room_toggle(self, enabled):
         core.send_message_to_server(PrivateRoomToggle(enabled))
@@ -303,6 +301,9 @@ class ChatRooms:
         if operators:
             for operator in operators:
                 private_room.operators.add(operator)
+                core.pluginhandler.private_room_operator_added_notification(room, operator)
+
+        self.server_rooms.add(room)
 
     def _join_room(self, msg):
         """Server code 14."""
@@ -382,11 +383,15 @@ class ChatRooms:
     def _private_room_removed(self, msg):
         """Server code 140."""
 
-        if msg.room not in self.private_rooms:
+        room = msg.room
+
+        if room not in self.private_rooms:
             return
 
-        core.pluginhandler.private_room_removed_notification(msg.room)
-        del self.private_rooms[msg.room]
+        core.pluginhandler.private_room_removed_notification(room)
+
+        self.server_rooms.discard(room)
+        del self.private_rooms[room]
 
     def _private_room_toggle(self, msg):
         """Server code 141."""
@@ -400,6 +405,7 @@ class ChatRooms:
 
         if private_room is not None:
             private_room.operators.add(msg.user)
+            core.pluginhandler.private_room_operator_added_notification(msg.room, msg.user)
 
     def _private_room_remove_operator(self, msg):
         """Server code 144."""
@@ -408,6 +414,7 @@ class ChatRooms:
 
         if private_room is not None:
             private_room.operators.discard(msg.user)
+            core.pluginhandler.private_room_operator_removed_notification(msg.room, msg.user)
 
     def _private_room_operator_added(self, msg):
         """Server code 145."""
@@ -416,6 +423,7 @@ class ChatRooms:
 
         if private_room is not None:
             private_room.operators.add(core.users.login_username)
+            core.pluginhandler.private_room_operatorship_added_notification(msg.room)
 
     def _private_room_operator_removed(self, msg):
         """Server code 146."""
@@ -424,6 +432,7 @@ class ChatRooms:
 
         if private_room is not None:
             private_room.operators.discard(core.users.login_username)
+            core.pluginhandler.private_room_operatorship_removed_notification(msg.room)
 
     def _private_room_operators(self, msg):
         """Server code 148."""

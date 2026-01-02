@@ -702,7 +702,7 @@ class Search:
 
     def show_error_message(self):
         if core.users.statuses.get(core.users.login_username, UserStatus.OFFLINE) == UserStatus.OFFLINE:
-            self.info_bar.show_error_message(_("Cannot receive search results while offline."))
+            self.info_bar.show_error_message(_("Cannot search for files shared by other users, since you are offline."))
 
     def clear(self):
         self.clear_model(stored_results=True)
@@ -1664,6 +1664,11 @@ class Search:
             self.tree_view.set_row_value(iterator, "downloading", "folder-download-symbolic")
 
     def on_download_files_to_selected(self, selected_folder_paths, _data):
+
+        if not self.__dict__:
+            # Tab was closed
+            return
+
         self.window.application.previous_file_download_folder = next(iter(selected_folder_paths), None)
         self.on_download_files(download_folder_path=self.window.application.previous_file_download_folder)
 
@@ -1680,6 +1685,10 @@ class Search:
         ).present()
 
     def on_download_folders_result(self, files):
+
+        if not self.__dict__:
+            # Tab was closed
+            return
 
         user_file_paths = set()
 
@@ -1736,9 +1745,9 @@ class Search:
                 data.append((username, i_file_path, i_size, i_file_data.attributes, i_selected, None))
 
         if self.searches.download_dialog is None:
-            self.searches.download_dialog = Download(self.window.application, self.on_download_folders_result)
+            self.searches.download_dialog = Download(self.window.application)
 
-        self.searches.download_dialog.update_files(data)
+        self.searches.download_dialog.update_files(data, download_callback=self.on_download_folders_result)
         self.searches.download_dialog.present()
 
     def on_copy_file_path(self, *_args):

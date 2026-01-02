@@ -12,6 +12,7 @@ from pynicotine.gtkgui.application import GTK_API_VERSION
 from pynicotine.gtkgui.widgets import ui
 from pynicotine.gtkgui.widgets.accelerator import Accelerator
 from pynicotine.gtkgui.widgets.dialogs import Dialog
+from pynicotine.gtkgui.widgets.dialogs import OptionDialog
 from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
 from pynicotine.gtkgui.widgets.treeview import TreeView
 from pynicotine.utils import humanize
@@ -53,7 +54,8 @@ class RoomList(Dialog):
                     "width": 260,
                     "expand_column": True,
                     "text_underline_column": "room_underline_data",
-                    "text_weight_column": "room_weight_data"
+                    "text_weight_column": "room_weight_data",
+                    "tooltip_callback": self.on_room_tooltip
                 },
                 "users": {
                     "column_type": "number",
@@ -76,7 +78,7 @@ class RoomList(Dialog):
             ("=" + _("_Join Room"), self.on_popup_join),
             ("=" + _("_Leave Room"), self.on_popup_leave),
             ("", None),
-            ("=" + _("Disown Private Room"), self.on_popup_private_room_disown),
+            ("=" + _("Delete Private Room…"), self.on_popup_private_room_disown),
             ("=" + _("Cancel Room Membership"), self.on_popup_private_room_cancel_membership)
         )
 
@@ -100,6 +102,7 @@ class RoomList(Dialog):
         for event_name, callback in (
             ("join-room", self.join_room),
             ("private-room-added", self.private_room_added),
+            ("private-room-removed", self.private_room_removed),
             ("remove-room", self.remove_room),
             ("room-list", self.room_list),
             ("server-disconnect", self.clear),
@@ -186,6 +189,13 @@ class RoomList(Dialog):
     def private_room_added(self, msg):
         self.add_room(msg.room, is_private=True)
 
+    def private_room_removed(self, msg):
+
+        iterator = self.list_view.iterators.get(msg.room)
+
+        if iterator is not None:
+            self.list_view.remove_row(iterator)
+
     def join_room(self, msg):
 
         room = msg.room
@@ -238,6 +248,21 @@ class RoomList(Dialog):
 
         self.list_view.unfreeze()
 
+    def on_room_tooltip(self, treeview, iterator):
+
+        room = treeview.get_row_value(iterator, "room")
+        room_underline = treeview.get_row_value(iterator, "room_underline_data")
+
+        if room_underline != Pango.Underline.NONE:
+            return _("%(room)s (%(role)s)") % {"room": room, "role": _("Room Owner")}
+
+        room_weight = treeview.get_row_value(iterator, "room_weight_data")
+
+        if room_weight != Pango.Weight.NORMAL:
+            return _("%(room)s (%(role)s)") % {"room": room, "role": _("Room Member")}
+
+        return room
+
     def on_row_activated(self, *_args):
 
         room = self.get_selected_room()
@@ -257,7 +282,7 @@ class RoomList(Dialog):
         menu.actions[_("_Join Room")].set_enabled(room not in core.chatrooms.joined_rooms)
         menu.actions[_("_Leave Room")].set_enabled(room in core.chatrooms.joined_rooms)
 
-        menu.actions[_("Disown Private Room")].set_enabled(is_private_room_owned)
+        menu.actions[_("Delete Private Room…")].set_enabled(is_private_room_owned)
         menu.actions[_("Cancel Room Membership")].set_enabled(is_private_room_member and not is_private_room_owned)
 
     def on_popup_join(self, *_args):
@@ -280,8 +305,19 @@ class RoomList(Dialog):
 
         core.chatrooms.remove_room(global_room_name)
 
+    def on_popup_private_room_disown_response(self, _dialog, _response_id, room):
+        core.chatrooms.request_private_room_cancel_membership(room)
+
     def on_popup_private_room_disown(self, *_args):
-        core.chatrooms.request_private_room_disown(self.popup_room)
+
+        OptionDialog(
+            parent=self,
+            title=_("Delete Private Room?"),
+            message=_("Do you really want to permanently delete your private room %s?") % self.popup_room,
+            destructive_response_id="ok",
+            callback=self.on_popup_private_room_disown_response,
+            callback_data=self.popup_room
+        ).present()
 
     def on_popup_private_room_cancel_membership(self, *_args):
         core.chatrooms.request_private_room_cancel_membership(self.popup_room)
