@@ -32,6 +32,7 @@ from pynicotine.slskmessages import SERVER_MESSAGE_CODES
 from pynicotine.slskmessages import DOUBLE_UINT32_UNPACK
 from pynicotine.slskmessages import UINT32_UNPACK
 from pynicotine.slskmessages import AcceptChildren
+from pynicotine.slskmessages import AddAllowedResponse
 from pynicotine.slskmessages import BranchLevel
 from pynicotine.slskmessages import BranchRoot
 from pynicotine.slskmessages import CantConnectToPeer
@@ -57,9 +58,11 @@ from pynicotine.slskmessages import MessageType
 from pynicotine.slskmessages import PossibleParents
 from pynicotine.slskmessages import ParentMinSpeed
 from pynicotine.slskmessages import ParentSpeedRatio
+from pynicotine.slskmessages import ParentStatus
 from pynicotine.slskmessages import PeerInit
 from pynicotine.slskmessages import PierceFireWall
 from pynicotine.slskmessages import Relogged
+from pynicotine.slskmessages import RemoveAllowedResponse
 from pynicotine.slskmessages import ResetDistributed
 from pynicotine.slskmessages import ServerConnect
 from pynicotine.slskmessages import ServerDisconnect
@@ -113,6 +116,14 @@ class PeerConnection(Connection):
         self.init = init
         self.pierce_token = pierce_token
         self.has_post_init_activity = False
+
+
+class UserAddress:
+    __slots__ = ("addr", "last_update")
+
+    def __init__(self, addr):
+        self.addr = addr
+        self.last_update = time.monotonic()
 
 
 class NetworkInterfaces:
@@ -322,9 +333,13 @@ class NetworkThread(Thread):
     INDIRECT_REQUEST_TIMEOUT = 20
     CONNECTION_MAX_IDLE = 60
     CONNECTION_MAX_IDLE_GHOST = 10
+    USER_ADDRESS_TTL = 1800                      # 30 minutes
     CONNECTION_BACKLOG_LENGTH = 65535            # OS limit can be lower
     MAX_INCOMING_MESSAGE_SIZE_LARGE = 469762048  # 448 MiB, to leave headroom for large shares
+    MAX_INCOMING_MESSAGE_SIZE_MEDIUM = 16777216  # 16 MiB
     MAX_INCOMING_MESSAGE_SIZE_SMALL = 16384      # 16 KiB
+    TCP_BUFFER_SIZE_MEDIUM = 262144              # 256 KiB
+    TCP_BUFFER_SIZE_SMALL = 16384                # 16 KiB
     ALLOWED_PEER_CONN_TYPES = {
         ConnectionType.PEER,
         ConnectionType.FILE,
@@ -351,9 +366,9 @@ class NetworkThread(Thread):
         resource.setrlimit(resource.RLIMIT_NOFILE, (MAX_FILE_LIMIT, MAX_FILE_LIMIT))  # pylint: disable=no-member
 
         # Reserve 2/3 of the file limit for sockets, but always limit the maximum number
-        # of sockets to 3072 to improve performance.
+        # of sockets to 2048 to make resource exhaustion attacks more difficult.
 
-        MAX_SOCKETS = min(int(MAX_FILE_LIMIT * (2 / 3)), 3072)
+        MAX_SOCKETS = min(int(MAX_FILE_LIMIT * (2 / 3)), 2048)
 
     except ImportError:
         # For Windows, FD_SETSIZE is set to 512 in CPython.
@@ -372,6 +387,7 @@ class NetworkThread(Thread):
         self._indirect_token_init_msgs = {}
         self._username_init_msgs = {}
         self._user_addresses = {}
+        self._allowed_message_responses = defaultdict(set)
         self._should_process_queue = False
         self._want_abort = False
 
@@ -392,7 +408,7 @@ class NetworkThread(Thread):
         self._manual_server_reconnect = False
         self._server_relogged = False
 
-        self._parent_conn = None
+        self._parent = None
         self._potential_parents = {}
         self._child_peers = {}
         self._branch_level = 0
@@ -513,10 +529,27 @@ class NetworkThread(Thread):
 
     # Connections #
 
-    def _indirect_request_error(self, token, init):
+    def _set_tcp_buffer_size(self, sock, conn_type):
+        """Set a sane TCP buffer size limit for connections, to prevent boundless message
+        flooding. The limit is smaller for distributed connections due to the larger attack
+        surface and messages always remaining small. File connections use the OS limit,
+        to allow for optimal file transfer speeds.
+        """
+
+        if conn_type == ConnectionType.FILE:
+            return
+
+        if conn_type == ConnectionType.DISTRIBUTED:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.TCP_BUFFER_SIZE_SMALL)
+            return
+
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.TCP_BUFFER_SIZE_MEDIUM)
+
+    def _indirect_request_error(self, init):
 
         username = init.target_user
         conn_type = init.conn_type
+        token = init.indirect_token
 
         log.add_conn("Indirect connect request of type %s to user %s with "
                      "token %s failed", (conn_type, username, token))
@@ -543,7 +576,7 @@ class NetworkThread(Thread):
             if not expire_all and (current_time - init.created_time) < self.INDIRECT_REQUEST_TIMEOUT:
                 continue
 
-            self._indirect_request_error(indirect_token, init)
+            self._indirect_request_error(init)
             timed_out_requests.add(indirect_token)
 
         if not timed_out_requests:
@@ -625,7 +658,8 @@ class NetworkThread(Thread):
         return None
 
     @staticmethod
-    def _unpack_network_message(msg_class, msg_content, msg_size, conn_type, sock=None, addr=None, username=None):
+    def _unpack_network_message(msg_class, msg_content, msg_size, conn_type, sock=None, addr=None, username=None,
+                                allowed_responses=None):
 
         try:
             msg = msg_class()
@@ -639,6 +673,9 @@ class NetworkThread(Thread):
             if username is not None:
                 msg.username = username
 
+            if allowed_responses is not None:
+                msg.allowed_responses = allowed_responses
+
             msg.parse_network_message(msg_content)
             return msg
 
@@ -648,22 +685,28 @@ class NetworkThread(Thread):
 
         return None
 
-    @staticmethod
-    def _unpack_embedded_message(msg):
+    @classmethod
+    def _unpack_embedded_message(cls, msg, sock=None, username=None):
         """This message embeds a distributed message.
 
         We unpack the distributed message and process it.
         """
 
         msg_type = msg.distrib_code
+        distrib_class = DISTRIBUTED_MESSAGE_CLASSES.get(msg_type)
 
-        if msg_type not in DISTRIBUTED_MESSAGE_CLASSES:
-            log.add_debug("Embedded distrib message type %s unknown", msg_type)
+        if distrib_class is not DistribSearch:
+            log.add_debug("Embedded distrib message type %s unexpected, ignoring", msg_type)
             return None
 
-        distrib_class = DISTRIBUTED_MESSAGE_CLASSES[msg_type]
-        unpacked_msg = distrib_class()
-        unpacked_msg.parse_network_message(memoryview(msg.distrib_message))
+        unpacked_msg = cls._unpack_network_message(
+            distrib_class,
+            msg.distrib_message,
+            len(msg.distrib_message),
+            conn_type="distrib",
+            sock=sock,
+            username=username
+        )
 
         return unpacked_msg
 
@@ -742,17 +785,28 @@ class NetworkThread(Thread):
             init_user=self._server_username, target_user=username, conn_type=conn_type,
             indirect_token=indirect_token
         )
-        user_address = self._user_addresses.get(username)
+        addr = None
 
         if in_address is not None:
-            user_address = in_address
+            addr = in_address
 
-        elif user_address is not None:
-            _ip_address, port = user_address
+        elif username in self._user_addresses:
+            user_address = self._user_addresses[username]
 
-            if not port:
-                # Port 0 means the user is likely bugged, ask the server for a new address
-                user_address = None
+            if user_address is not None:
+                addr = user_address.addr
+                _ip_address, port = addr
+
+                if not port:
+                    # Port 0 likely means the server hasn't received the user's port yet.
+                    # Ask the server for a new address.
+                    addr = None
+
+                elif (time.monotonic() - user_address.last_update) > self.USER_ADDRESS_TTL:
+                    # Certain clients may prefer sending a listening port update to the server without
+                    # reconnecting. Make sure we request the user's port again every now and then.
+                    log.add_conn("User %s's address expired, requesting new one", username)
+                    addr = None
 
         if msg is not None:
             init.outgoing_msgs.append(msg)
@@ -762,13 +816,13 @@ class NetworkThread(Thread):
 
         log.add_conn("Requesting indirect connection to user %s with token %s", (username, indirect_token))
 
-        if user_address is None:
+        if addr is None:
             self._pending_init_msgs[username].append(init)
             self._send_message_to_server(GetPeerAddress(username))
 
             log.add_conn("Requesting address for user %s", username)
         else:
-            self._connect_to_peer(username, user_address, init)
+            self._connect_to_peer(username, addr, init)
 
     def _connect_to_peer(self, username, addr, init, pierce_token=None):
         """Initiate a connection with a peer."""
@@ -919,13 +973,18 @@ class NetworkThread(Thread):
             init.sock = None
 
         if conn_type == ConnectionType.DISTRIBUTED:
+            parent_candidate = self._potential_parents.get(username)
+
+            if self._parent is not None and conn is self._parent.conn:
+                self._send_have_no_parent()
+
+            if parent_candidate is not None and conn is parent_candidate.conn:
+                parent_candidate.conn = None
+
             child_conn = self._child_peers.get(username)
 
             if child_conn is conn:
                 self._remove_child_peer_connection(username)
-
-            elif conn is self._parent_conn:
-                self._send_have_no_parent()
 
         elif conn in self._file_init_msgs:
             file_init = self._file_init_msgs.pop(conn)
@@ -1054,8 +1113,8 @@ class NetworkThread(Thread):
             stale_conns.clear()
 
         if self._pending_peer_conns:
-            for addr, init in self._pending_peer_conns.copy().items():
-                self._init_peer_connection(addr, init)
+            for init, (addr, pierce_token) in self._pending_peer_conns.copy().items():
+                self._init_peer_connection(addr, init, pierce_token=pierce_token)
 
     # Server Connection #
 
@@ -1164,6 +1223,7 @@ class NetworkThread(Thread):
 
         sock.setblocking(False)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._set_tcp_buffer_size(sock, ConnectionType.SERVER)
 
         # Detect if our connection to the server is still alive
         self._set_server_socket_keepalive(sock)
@@ -1195,7 +1255,7 @@ class NetworkThread(Thread):
         )
 
         login, password = conn.login
-        self._user_addresses[login] = (self._local_ip_address, self._listen_port)
+        self._user_addresses[login] = UserAddress((self._local_ip_address, self._listen_port))
         conn.login = True
 
         self._server_address = conn.addr
@@ -1235,13 +1295,33 @@ class NetworkThread(Thread):
             return True
 
         if msg_class is EmbeddedMessage:
-            self._distribute_embedded_message(msg)
-            msg = self._unpack_embedded_message(msg)
+            if self._parent is not None:
+                # Another peer is currently our parent. The server shouldn't send embedded messages
+                # while it's not our parent, but let's be safe.
+                return True
+
+            unpacked_msg = self._unpack_embedded_message(msg)
+
+            if unpacked_msg is None:
+                # Ignore unknown message and keep connection open
+                return True
+
+            if not self._is_server_parent:
+                self._is_server_parent = True
+
+                if len(self._child_peers) < self._max_distrib_children:
+                    self._send_message_to_server(AcceptChildren(True))
+
+                log.add_conn("Server is our parent, ready to distribute search requests as a branch root")
+
+            self._send_message_to_child_peers(unpacked_msg, msg.distrib_message)
+            msg = unpacked_msg
 
         elif msg_class is Login:
             if msg.success:
                 # Ensure listening port is open
-                msg.local_address = self._user_addresses[self._server_username]
+                user_address = self._user_addresses[self._server_username]
+                msg.local_address = user_address.addr
                 local_ip_address, port = msg.local_address
 
                 if self._portmapper is not None:
@@ -1268,7 +1348,7 @@ class NetworkThread(Thread):
                          "token %s, address %s", (conn_type, username, pierce_token, addr))
 
             if conn_type in self.ALLOWED_PEER_CONN_TYPES:
-                init = PeerInit(init_user=username, target_user=username, conn_type=conn_type)
+                init = PeerInit(target_user=username, conn_type=conn_type)
                 self._connect_to_peer(username, addr, init, pierce_token=pierce_token)
             else:
                 log.add_conn("Unknown connection type %s", conn_type)
@@ -1278,7 +1358,7 @@ class NetworkThread(Thread):
 
             if pierce_token in self._indirect_token_init_msgs:
                 init = self._indirect_token_init_msgs.pop(pierce_token)
-                self._indirect_request_error(pierce_token, init)
+                self._indirect_request_error(init)
 
         elif msg_class is GetUserStatus:
             if msg.status == UserStatus.OFFLINE and msg.user in self._user_addresses:
@@ -1308,9 +1388,9 @@ class NetworkThread(Thread):
             # We already store a local IP address for our username
             if username != self._server_username and username in self._user_addresses:
                 if user_offline or not msg.port:
-                    addr = None
-
-                self._user_addresses[username] = addr
+                    self._user_addresses[username] = None
+                else:
+                    self._user_addresses[username] = UserAddress(addr)
 
         elif msg_class in (WatchUser, GetUserStats):
             if msg.user == self._server_username:
@@ -1330,13 +1410,18 @@ class NetworkThread(Thread):
             # Server sent a list of 10 potential parents, whose purpose is to forward us search requests.
             # We attempt to connect to them all at once, since connection errors are fairly common.
 
-            self._potential_parents = msg.list
-            log.add_conn("Server sent us a list of %s possible parents", len(msg.list))
+            if self._parent is None:
+                self._close_parent_candidate_connections()
 
-            if self._parent_conn is None and self._potential_parents:
-                for username, addr in self._potential_parents.items():
+                self._potential_parents = msg.list
+                log.add_conn("Server sent us a list of %s possible parents", len(msg.list))
+
+                for username, parent_candidate in self._potential_parents.items():
                     log.add_conn("Attempting parent connection to user %s", username)
-                    self._initiate_connection_to_peer(username, ConnectionType.DISTRIBUTED, in_address=addr)
+                    self._initiate_connection_to_peer(
+                        username, ConnectionType.DISTRIBUTED,
+                        in_address=(parent_candidate.ip_address, parent_candidate.port)
+                    )
 
         elif msg_class is ParentMinSpeed:
             self._distrib_parent_min_speed = msg.speed
@@ -1351,8 +1436,8 @@ class NetworkThread(Thread):
         elif msg_class is ResetDistributed:
             log.add_conn("Received a reset request for distributed network")
 
-            if self._parent_conn is not None:
-                self._close_connection(self._parent_conn)
+            if self._parent is not None:
+                self._close_connection(self._parent.conn)
 
             for child_conn in self._child_peers.copy().values():
                 self._close_connection(child_conn)
@@ -1446,7 +1531,7 @@ class NetworkThread(Thread):
             self._portmapper.set_port(port=None, local_ip_address=None)
             self._portmapper = None
 
-        self._parent_conn = None
+        self._parent = None
         self._potential_parents.clear()
         self._branch_level = 0
         self._branch_root = None
@@ -1471,6 +1556,7 @@ class NetworkThread(Thread):
         self._pending_peer_conns.clear()
         self._pending_init_msgs.clear()
         self._username_init_msgs.clear()
+        self._allowed_message_responses.clear()
 
         # Reset connection stats
         events.emit_main_thread("set-connection-stats")
@@ -1542,6 +1628,8 @@ class NetworkThread(Thread):
             log.add_conn("Indirect connection to user %s with token %s established",
                          (init.target_user, pierce_token))
 
+            self._set_tcp_buffer_size(conn.sock, init.conn_type)
+
             if previous_sock is None or is_direct_conn_in_progress:
                 init.sock = conn.sock
                 log.add_conn("Using as primary connection, since no direct connection is established")
@@ -1565,6 +1653,8 @@ class NetworkThread(Thread):
             if conn_type not in self.ALLOWED_PEER_CONN_TYPES:
                 log.add_conn("Unknown connection type %s", conn_type)
                 return None
+
+            self._set_tcp_buffer_size(conn.sock, conn_type)
 
             init = msg
             self._replace_existing_connection(init)
@@ -1686,11 +1776,11 @@ class NetworkThread(Thread):
 
         if self._num_sockets >= self.MAX_SOCKETS:
             # Connection limit reached, re-queue
-            self._pending_peer_conns[addr] = init
+            self._pending_peer_conns[init] = (addr, pierce_token)
             return
 
         _ip_address, port = addr
-        self._pending_peer_conns.pop(addr, None)
+        self._pending_peer_conns.pop(init, None)
 
         if port <= 0 or port > 65535:
             log.add_conn("Skipping direct connection attempt of type %s to user %s "
@@ -1705,6 +1795,7 @@ class NetworkThread(Thread):
 
         sock.setblocking(False)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._set_tcp_buffer_size(sock, init.conn_type)
 
         try:
             self._bind_socket_interface(sock)
@@ -1732,18 +1823,27 @@ class NetworkThread(Thread):
         # Peer messages are 8 bytes or greater in length
         while buffer_len >= msg_content_offset:
             msg_size, msg_type = DOUBLE_UINT32_UNPACK(in_buffer, idx)
-
-            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_LARGE:
-                log.add_conn("Received message larger than maximum size %s from user %s. "
-                             "Closing connection.", (self.MAX_INCOMING_MESSAGE_SIZE_LARGE, conn.init.target_user))
-                self._close_connection(conn)
-                return
-
             msg_size_total = msg_size + 4
+            max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_MEDIUM
             msg_class = None
 
             if msg_type in PEER_MESSAGE_CLASSES:
                 msg_class = PEER_MESSAGE_CLASSES[msg_type]
+
+            if msg_class is SharedFileListResponse or msg_class is UserInfoResponse:
+                max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_LARGE
+
+                if conn.init.target_user not in self._allowed_message_responses[msg_class]:
+                    # Since these responses tend to be large, close the connection when receiving
+                    # unsolicited messages to save bandwidth.
+                    self._close_connection(conn)
+                    return
+
+            if msg_size > max_msg_size:
+                log.add_conn("Received message larger than maximum size %s from user %s. "
+                             "Closing connection.", (max_msg_size, conn.init.target_user))
+                self._close_connection(conn)
+                return
 
             # Send progress to the main thread
             if msg_class is SharedFileListResponse:
@@ -1767,7 +1867,8 @@ class NetworkThread(Thread):
                     conn_type="peer",
                     sock=conn.sock,
                     addr=conn.addr,
-                    username=conn.init.target_user
+                    username=conn.init.target_user,
+                    allowed_responses=self._allowed_message_responses.get(msg_class, set())
                 )
 
                 if msg_class is FileSearchResponse:
@@ -2050,7 +2151,7 @@ class NetworkThread(Thread):
             # This is not a child peer, ignore
             return
 
-        if self._parent_conn is None and not self._is_server_parent:
+        if self._parent is None and not self._is_server_parent:
             # We have no parent user and the server hasn't sent search requests, no point
             # in accepting child peers
             log.add_conn("Rejecting distributed child peer connection from user %s, since we have no parent", username)
@@ -2071,10 +2172,7 @@ class NetworkThread(Thread):
 
         self._child_peers[username] = conn
         self._send_message_to_peer(username, DistribBranchLevel(self._branch_level))
-
-        if self._parent_conn is not None:
-            # Only sent when we're not the branch root
-            self._send_message_to_peer(username, DistribBranchRoot(self._branch_root))
+        self._send_message_to_peer(username, DistribBranchRoot(self._branch_root))
 
         log.add_conn("Adopting user %s as distributed child peer. Number of current child peers: %s",
                      (username, len(self._child_peers)))
@@ -2105,35 +2203,18 @@ class NetworkThread(Thread):
         for conn in self._child_peers.values():
             self._process_distrib_output(conn, msg, msg_content)
 
-    def _distribute_embedded_message(self, msg):
-        """Distributes an embedded message from the server to our child
-        peers."""
-
-        if self._parent_conn is not None:
-            # The server shouldn't send embedded messages while it's not our parent, but let's be safe
-            return
-
-        self._send_message_to_child_peers(DistribEmbeddedMessage(msg.distrib_code, msg.distrib_message))
-
-        if self._is_server_parent:
-            return
-
-        self._is_server_parent = True
-
-        if len(self._child_peers) < self._max_distrib_children:
-            self._send_message_to_server(AcceptChildren(True))
-
-        log.add_conn("Server is our parent, ready to distribute search requests as a branch root")
-
-    def _verify_parent_connection(self, conn, msg_class):
+    def _verify_parent_status(self, conn, msg_class):
         """Verify that a connection is our current parent connection."""
 
-        if conn is not self._parent_conn:
-            log.add_conn("Received a distributed message %s from user %s, who is not our parent. "
-                         "Closing connection.", (msg_class, conn.init.target_user))
-            return False
+        if self._parent is None:
+            return ParentStatus.WAITING
 
-        return True
+        if conn is self._parent.conn:
+            return ParentStatus.ACCEPTED
+
+        log.add_conn("Received a distributed message %s from user %s, who is not our parent. "
+                     "Closing connection.", (msg_class, conn.init.target_user))
+        return ParentStatus.REJECTED
 
     def _send_have_no_parent(self):
         """Inform the server we have no parent.
@@ -2148,7 +2229,7 @@ class NetworkThread(Thread):
         # Note that we don't clear the previous list of possible parents here, since
         # it's possible the parent connection was closed immediately or superseded by
         # an indirect connection
-        self._parent_conn = None
+        self._parent = None
         self._branch_level = 0
         self._branch_root = self._server_username
 
@@ -2159,20 +2240,62 @@ class NetworkThread(Thread):
         self._send_message_to_server(BranchLevel(self._branch_level))
         self._send_message_to_server(AcceptChildren(False))
 
-    def _set_branch_root(self, username):
-        """Inform the server and child peers of our branch root."""
+    def _adopt_parent(self, username):
 
-        if not username:
+        if self._parent is not None:
             return
 
-        if username == self._branch_root:
+        parent_candidate = self._potential_parents.get(username)
+
+        if parent_candidate is None or parent_candidate.conn is None:
             return
 
-        self._branch_root = username
-        self._send_message_to_server(BranchRoot(username))
-        self._send_message_to_child_peers(DistribBranchRoot(username))
+        if parent_candidate.branch_level is None or not parent_candidate.branch_root:
+            return
 
-        log.add_conn("Our branch root is user %s", username)
+        # We have a successful connection with a potential parent. Tell the server who
+        # our parent is, and stop requesting new potential parents.
+        self._parent = parent_candidate
+        self._branch_level = parent_candidate.branch_level + 1
+        self._branch_root = parent_candidate.branch_root
+        self._is_server_parent = False
+
+        parent_candidate.branch_level = None
+        parent_candidate.branch_root = None
+
+        self._close_parent_candidate_connections()
+
+        self._send_message_to_server(HaveNoParent(False))
+        self._send_message_to_server(BranchRoot(self._branch_root))
+        self._send_message_to_server(BranchLevel(self._branch_level))
+
+        if len(self._child_peers) < self._max_distrib_children:
+            self._send_message_to_server(AcceptChildren(True))
+
+        self._send_message_to_child_peers(DistribBranchLevel(self._branch_level))
+        self._send_message_to_child_peers(DistribBranchRoot(self._branch_root))
+        self._child_peers.pop(username, None)
+
+        log.add_conn(
+            "Received first search request from parent candidate %s, adopting them as our parent",
+            username
+        )
+        log.add_conn("Our branch root is user %s", self._branch_root)
+        log.add_conn("Our branch level is %s", self._branch_level)
+
+    def _close_parent_candidate_connections(self):
+
+        for parent_candidate in self._potential_parents.values():
+            conn = parent_candidate.conn
+
+            if conn is None:
+                continue
+
+            if self._parent is not None and conn is self._parent.conn:
+                continue
+
+            self._close_connection(conn)
+            parent_candidate.conn = None
 
     def _update_maximum_distributed_children(self):
 
@@ -2209,19 +2332,31 @@ class NetworkThread(Thread):
             # Ignore unknown message and keep connection open
             return True
 
-        if msg_class is DistribSearch:
-            if not self._verify_parent_connection(conn, msg_class):
-                return False
+        username = msg.username
+        parent_status = ParentStatus.REJECTED
 
-            self._send_message_to_child_peers(msg, msg_content)
+        if msg_class is DistribSearch:
+            if self._parent is None:
+                self._adopt_parent(username)
+
+            parent_status = self._verify_parent_status(conn, msg_class)
+
+            if parent_status == ParentStatus.ACCEPTED:
+                self._send_message_to_child_peers(msg, msg_content)
 
         elif msg_class is DistribEmbeddedMessage:
-            if not self._verify_parent_connection(conn, msg_class):
-                return False
+            unpacked_msg = self._unpack_embedded_message(msg, conn.sock, conn.init.target_user)
 
-            unpacked_msg = self._unpack_embedded_message(msg)
+            if unpacked_msg is None:
+                # Ignore unknown message and keep connection open
+                return True
 
-            if unpacked_msg is not None:
+            if self._parent is None:
+                self._adopt_parent(username)
+
+            parent_status = self._verify_parent_status(conn, msg_class)
+
+            if parent_status == ParentStatus.ACCEPTED:
                 self._send_message_to_child_peers(unpacked_msg, msg.distrib_message)
 
             msg = unpacked_msg
@@ -2231,36 +2366,12 @@ class NetworkThread(Thread):
                 # There are rare cases of parents sending a branch level value of -1,
                 # presumably buggy clients
                 log.add_conn("Received an invalid branch level value %s from user %s. "
-                             "Closing connection.", (msg.level, msg.username))
+                             "Closing connection.", (msg.level, username))
                 return False
 
-            if self._parent_conn is None and msg.username in self._potential_parents:
-                # We have a successful connection with a potential parent. Tell the server who
-                # our parent is, and stop requesting new potential parents.
-                self._parent_conn = conn
-                self._branch_level = msg.level + 1
-                self._is_server_parent = False
+            parent_status = self._verify_parent_status(conn, msg_class)
 
-                self._send_message_to_server(HaveNoParent(False))
-                self._send_message_to_server(BranchLevel(self._branch_level))
-
-                if len(self._child_peers) < self._max_distrib_children:
-                    self._send_message_to_server(AcceptChildren(True))
-
-                self._send_message_to_child_peers(DistribBranchLevel(self._branch_level))
-                self._child_peers.pop(msg.username, None)
-
-                log.add_conn("Adopting user %s as parent", msg.username)
-                log.add_conn("Our branch level is %s", self._branch_level)
-
-                if self._branch_level == 1:
-                    # Our current branch level is 1, our parent is a branch root
-                    self._set_branch_root(msg.username)
-
-            elif not self._verify_parent_connection(conn, msg_class):
-                return False
-
-            else:
+            if parent_status == ParentStatus.ACCEPTED:
                 # Inform the server and child peers of our new branch level
                 self._branch_level = msg.level + 1
                 self._send_message_to_server(BranchLevel(self._branch_level))
@@ -2269,14 +2380,41 @@ class NetworkThread(Thread):
                 log.add_conn("Received a branch level update from our parent. Our new branch level is %s",
                              self._branch_level)
 
+            elif parent_status == ParentStatus.WAITING and username in self._potential_parents:
+                parent_candidate = self._potential_parents[username]
+                parent_candidate.conn = conn
+                parent_candidate.branch_level = msg.level
+
+                # Branch roots are not guaranteed to send a separate branch root message
+                if not msg.level:
+                    parent_candidate.branch_root = username
+
         elif msg_class is DistribBranchRoot:
-            if not self._verify_parent_connection(conn, msg_class):
+            if not msg.root_username:
+                log.add_conn("Received an empty branch root value from user %s. "
+                             "Closing connection.", username)
                 return False
 
-            self._set_branch_root(msg.root_username)
+            parent_status = self._verify_parent_status(conn, msg_class)
 
-        self._emit_network_message_event(msg)
-        return True
+            if parent_status == ParentStatus.ACCEPTED:
+                self._branch_root = msg.root_username
+                self._send_message_to_server(BranchRoot(self._branch_root))
+                self._send_message_to_child_peers(DistribBranchRoot(self._branch_root))
+
+                log.add_conn("Received a branch root update from our parent. Our new branch root is %s",
+                             self._branch_root)
+
+            elif parent_status == ParentStatus.WAITING and username in self._potential_parents:
+                parent_candidate = self._potential_parents[username]
+                parent_candidate.conn = conn
+                parent_candidate.branch_root = msg.root_username
+
+        if parent_status == ParentStatus.ACCEPTED:
+            self._emit_network_message_event(msg)
+
+        keep_connection_open = (parent_status != ParentStatus.REJECTED)
+        return keep_connection_open
 
     def _process_distrib_input(self, conn):
         """Reads messages from the input buffer of a 'D' connection."""
@@ -2397,6 +2535,12 @@ class NetworkThread(Thread):
 
             self._upload_limit = msg.limit * 1024
             self._calc_upload_limit_function()
+
+        elif msg_class is AddAllowedResponse:
+            self._allowed_message_responses[msg.msg_class].add(msg.response_id)
+
+        elif msg_class is RemoveAllowedResponse:
+            self._allowed_message_responses[msg.msg_class].discard(msg.response_id)
 
         elif msg_class is EmitNetworkMessageEvents:
             for network_msg in msg.msgs:

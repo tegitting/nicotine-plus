@@ -122,9 +122,13 @@ class Downloads(Transfers):
     def on_try_clear_queued(self, *_args):
 
         OptionDialog(
-            parent=self.window,
+            application=self.window.application,
             title=_("Clear Queued Downloads"),
             message=_("Do you really want to clear all queued downloads?"),
+            buttons=[
+                ("cancel", _("_Cancel")),
+                ("ok", _("Clear All"))
+            ],
             destructive_response_id="ok",
             callback=self.on_clear_queued
         ).present()
@@ -135,9 +139,13 @@ class Downloads(Transfers):
     def on_try_clear_all(self, *_args):
 
         OptionDialog(
-            parent=self.window,
+            application=self.window.application,
             title=_("Clear All Downloads"),
             message=_("Do you really want to clear all downloads?"),
+            buttons=[
+                ("cancel", _("_Cancel")),
+                ("ok", _("Clear All"))
+            ],
             destructive_response_id="ok",
             callback=self.on_clear_all_response
         ).present()
@@ -153,7 +161,7 @@ class Downloads(Transfers):
     def download_large_folder(self, username, folder, num_files, download_callback, callback_args):
 
         OptionDialog(
-            parent=self.window,
+            application=self.window.application,
             title=ngettext(
                 "Download %(num)s File?",
                 "Download %(num)s Files?",
@@ -166,7 +174,7 @@ class Downloads(Transfers):
             ) % {"num": humanize(num_files), "user": username, "folder": folder},
             buttons=[
                 ("cancel", _("_Cancel")),
-                ("download", _("_Download Folder"))
+                ("download", _("_Download"))
             ],
             callback=self.folder_download_response,
             callback_data=(download_callback, callback_args)

@@ -14,6 +14,7 @@ from pynicotine.events import events
 from pynicotine.gtkgui.widgets import ui
 from pynicotine.gtkgui.widgets.accelerator import Accelerator
 from pynicotine.gtkgui.widgets.dialogs import Dialog
+from pynicotine.gtkgui.widgets.dialogs import EntryDialog
 from pynicotine.gtkgui.widgets.dialogs import OptionDialog
 from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
 from pynicotine.gtkgui.widgets.theme import USER_STATUS_ICON_NAMES
@@ -34,14 +35,13 @@ class ChatHistory(Dialog):
         ) = ui.load(scope=self, path="dialogs/chathistory.ui")
 
         super().__init__(
-            parent=application.window,
+            application=application,
             content_box=self.container,
             show_callback=self.on_show,
             title=_("Chat History"),
             width=960,
             height=700
         )
-        application.add_window(self.widget)
 
         self.list_view = TreeView(
             application.window, parent=self.list_container, activate_row_callback=self.on_show_user,
@@ -80,6 +80,7 @@ class ChatHistory(Dialog):
         )
 
         Accelerator("<Primary>f", self.widget, self.on_search_accelerator)
+        Accelerator("Down", self.search_entry, self.on_focus_list_view_accelerator)
 
         self.load_users()
 
@@ -260,6 +261,27 @@ class ChatHistory(Dialog):
             self.close()
             return
 
+    def on_message_user_response(self, dialog, _response_id, _data):
+
+        username = dialog.get_entry_value().strip()
+
+        if not username:
+            return
+
+        core.privatechat.show_user(username)
+        self.close()
+
+    def on_message_user(self, *_args):
+
+        EntryDialog(
+            application=self.application,
+            title=_("Message User"),
+            message=_("Enter the name of the user you want to message:"),
+            action_button_label=_("_Add"),
+            callback=self.on_message_user_response,
+            droplist=sorted(core.buddies.users)
+        ).present()
+
     def on_delete_chat_log_response(self, _dialog, _response_id, username):
         log.delete_log(log.private_chat_folder_path, username)
         self.remove_user(username)
@@ -270,9 +292,13 @@ class ChatHistory(Dialog):
             username = self.list_view.get_row_value(iterator, "user")
 
             OptionDialog(
-                parent=self.parent,
+                application=self.application,
                 title=_("Delete Logged Messages?"),
                 message=_("Do you really want to permanently delete all logged messages for this user?"),
+                buttons=[
+                    ("cancel", _("_Cancel")),
+                    ("ok", _("Delete"))
+                ],
                 destructive_response_id="ok",
                 callback=self.on_delete_chat_log_response,
                 callback_data=username
@@ -283,6 +309,15 @@ class ChatHistory(Dialog):
         """Ctrl+F - Search users."""
 
         self.search_entry.grab_focus()
+        return True
+
+    def on_focus_list_view_accelerator(self, *_args):
+        """Down - Focus list view."""
+
+        if not self.list_container.get_visible():
+            return False
+
+        self.list_view.grab_focus()
         return True
 
     def on_show(self, *_args):

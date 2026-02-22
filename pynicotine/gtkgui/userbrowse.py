@@ -980,7 +980,7 @@ class UserBrowse:
             # Tab was closed
             return
 
-        user = dialog.get_entry_value()
+        user = dialog.get_entry_value().strip()
 
         if not user:
             return
@@ -1016,7 +1016,7 @@ class UserBrowse:
             str_title = _("Upload Folder To User") if num_folders == 1 else _("Upload Folders To User")
 
         EntryDialog(
-            parent=self.window,
+            application=self.window.application,
             title=str_title,
             message=_("Enter the name of the user you want to upload to:"),
             action_button_label=_("_Upload"),
@@ -1190,7 +1190,7 @@ class UserBrowse:
     def on_download_files_to(self, *_args):
 
         FolderChooser(
-            parent=self.window,
+            application=self.window.application,
             title=_("Select Destination Folder for Files"),
             callback=self.on_download_files_to_selected,
             initial_folder=(
@@ -1205,7 +1205,7 @@ class UserBrowse:
             # Tab was closed
             return
 
-        user = dialog.get_entry_value()
+        user = dialog.get_entry_value().strip()
         folder_path = self.active_folder_path
 
         if not user or folder_path is None:
@@ -1219,7 +1219,7 @@ class UserBrowse:
     def on_upload_files(self, *_args):
 
         EntryDialog(
-            parent=self.window,
+            application=self.window.application,
             title=_("Upload File To User") if len(self.selected_files) == 1 else ("Upload Files To User"),
             message=_("Enter the name of the user you want to upload to:"),
             action_button_label=_("_Upload"),

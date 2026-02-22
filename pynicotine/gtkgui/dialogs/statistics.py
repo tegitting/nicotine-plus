@@ -54,7 +54,7 @@ class Statistics(Dialog):
         }
 
         super().__init__(
-            parent=application.window,
+            application=application,
             content_box=self.container,
             show_callback=self.on_show,
             title=_("Transfer Statistics"),
@@ -105,9 +105,13 @@ class Statistics(Dialog):
     def on_reset_statistics(self, *_args):
 
         OptionDialog(
-            parent=self,
+            application=self.application,
             title=_("Reset Transfer Statistics?"),
             message=_("Do you really want to reset transfer statistics?"),
+            buttons=[
+                ("cancel", _("_Cancel")),
+                ("ok", _("Reset All"))
+            ],
             destructive_response_id="ok",
             callback=self.on_reset_statistics_response
         ).present()

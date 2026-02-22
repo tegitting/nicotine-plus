@@ -26,15 +26,18 @@ from pynicotine.config import config
 from pynicotine.core import core
 from pynicotine.events import events
 from pynicotine.logfacility import log
+from pynicotine.slskmessages import AddAllowedResponse
 from pynicotine.slskmessages import ConnectionType
 from pynicotine.slskmessages import CloseConnection
 from pynicotine.slskmessages import DownloadFile
 from pynicotine.slskmessages import FileOffset
 from pynicotine.slskmessages import FolderContentsRequest
+from pynicotine.slskmessages import FolderContentsResponse
 from pynicotine.slskmessages import increment_token
 from pynicotine.slskmessages import initial_token
 from pynicotine.slskmessages import PlaceInQueueRequest
 from pynicotine.slskmessages import QueueUpload
+from pynicotine.slskmessages import RemoveAllowedResponse
 from pynicotine.slskmessages import SetDownloadLimit
 from pynicotine.slskmessages import TransferDirection
 from pynicotine.slskmessages import TransferRejectReason
@@ -583,7 +586,7 @@ class Downloads(Transfers):
                 if self._enqueue_transfer(download):
                     self._update_transfer(download)
 
-    def can_upload(self, username):
+    def can_send_any_files(self, username):
 
         transfers = config.sections["transfers"]
 
@@ -592,7 +595,16 @@ class Downloads(Transfers):
 
         if transfers["uploadallowed"] == 1:
             # Everyone
-            return True
+            # Always reject uploads, since there's no good reason to allow any user to send
+            # arbitrary files. It has resulted in confusion in the past.
+            return False
+
+        if username == core.users.login_username:
+            # Disallow arbitrary file uploads from our own username. There's no point in
+            # allowing them. Since it's quite common for users to add themselves to their
+            # buddy list, their own username would be the most obvious choice for someone to
+            # spoof in order to get uploads through.
+            return False
 
         if transfers["uploadallowed"] == 2 and username in core.buddies.users:
             # Buddies
@@ -753,6 +765,9 @@ class Downloads(Transfers):
 
         self._requested_folder_token = increment_token(self._requested_folder_token)
 
+        core.send_message_to_network_thread(
+            AddAllowedResponse(FolderContentsResponse, username + folder_path)
+        )
         core.send_message_to_peer(
             username, FolderContentsRequest(
                 folder_path, self._requested_folder_token, legacy_client=requested_folder.legacy_attempt
@@ -943,12 +958,17 @@ class Downloads(Transfers):
 
     def _requested_folder_timeout(self, requested_folder):
 
+        username = requested_folder.username
+        folder_path = requested_folder.folder_path
+
+        core.send_message_to_network_thread(
+            RemoveAllowedResponse(FolderContentsResponse, username + folder_path)
+        )
+
         if requested_folder.request_timer_id is None:
             return
 
         requested_folder.request_timer_id = None
-        username = requested_folder.username
-        folder_path = requested_folder.folder_path
 
         if requested_folder.has_retried:
             log.add_transfer("Folder content request for folder %s from user %s timed out, "
@@ -966,15 +986,26 @@ class Downloads(Transfers):
     def _folder_contents_response(self, msg):
         """Peer code 37."""
 
+        if msg.list is None:
+            # Response was rejected
+            msg.token = msg.dir = None
+            return
+
         username = msg.username
         folder_path = msg.dir
 
+        core.send_message_to_network_thread(
+            RemoveAllowedResponse(FolderContentsResponse, username + folder_path)
+        )
+
         if username not in self._requested_folders:
+            msg.token = msg.dir = None
             return
 
         requested_folder = self._requested_folders[username].get(msg.dir)
 
         if requested_folder is None:
+            msg.token = msg.dir = None
             return
 
         log.add_transfer("Received response for folder content request for folder %s "
@@ -1051,7 +1082,7 @@ class Downloads(Transfers):
                 # SoulseekQt sends "Complete" as the reason for rejecting the download if it exists
                 cancel_reason = TransferRejectReason.COMPLETE
 
-        elif self.can_upload(username):
+        elif self.can_send_any_files(username):
             # Check if download exists in our default download folder
             _file_path, file_exists = self.get_complete_download_file_path(username, virtual_path, size)
 

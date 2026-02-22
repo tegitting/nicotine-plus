@@ -284,12 +284,13 @@ class Interests:
 
     def show_recommendations(self, always_global=False):
 
-        self.recommendations_label.set_label(_("Recommendations"))
         self.similar_users_label.set_label(_("Similar Users"))
 
         if always_global or (not self.likes_list_view.iterators and not self.dislikes_list_view.iterators):
+            self.recommendations_label.set_label(_("Popular Interests"))
             core.interests.request_global_recommendations()
         else:
+            self.recommendations_label.set_label(_("Recommendations"))
             core.interests.request_recommendations()
 
         core.interests.request_similar_users()
@@ -424,10 +425,14 @@ class Interests:
     def on_refresh_recommendations(self, *_args):
         self.show_recommendations()
 
-    def set_recommendations(self, recommendations, unrecommendations, item=None):
+    def set_recommendations(self, recommendations, unrecommendations, item=None, is_global=False):
 
-        if item:
-            self.recommendations_label.set_label(_("Recommendations (%s)") % item)
+        if is_global:
+            self.recommendations_label.set_label(_("Popular Interests"))
+
+        elif item:
+            self.recommendations_label.set_label(_("Recommendations for %(item)s") % {"item": item})
+
         else:
             self.recommendations_label.set_label(_("Recommendations"))
 
@@ -453,7 +458,7 @@ class Interests:
             widget.unfreeze()
 
     def global_recommendations(self, msg):
-        self.set_recommendations(msg.recommendations, msg.unrecommendations)
+        self.set_recommendations(msg.recommendations, msg.unrecommendations, is_global=True)
 
     def recommendations(self, msg):
 
@@ -470,18 +475,19 @@ class Interests:
     def set_similar_users(self, users, item=None):
 
         if item:
-            self.similar_users_label.set_label(_("Similar Users (%s)") % item)
+            self.similar_users_label.set_label(_("Users who like %(item)s") % {"item": item})
         else:
             self.similar_users_label.set_label(_("Similar Users"))
 
         self.similar_users_list_view.clear()
         self.similar_users_list_view.freeze()
 
-        for index, (user, rating) in enumerate(reversed(list(users.items()))):
-            status = core.users.statuses.get(user, UserStatus.OFFLINE)
-            country_code = core.users.countries.get(user, "")
-            stats = core.users.watched.get(user)
-            rating = index + (1000 * rating)  # Preserve default sort order
+        for index, similar_user in enumerate(reversed(users)):
+            username = similar_user.username
+            status = core.users.statuses.get(username, UserStatus.OFFLINE)
+            country_code = core.users.countries.get(username, "")
+            stats = core.users.watched.get(username)
+            rating = index + (1000 * (similar_user.rating or 0))  # Preserve default sort order
 
             if stats is not None:
                 speed = stats.upload_speed or 0
@@ -498,7 +504,7 @@ class Interests:
             self.similar_users_list_view.add_row([
                 USER_STATUS_ICON_NAMES[status],
                 get_flag_icon_name(country_code),
-                user,
+                username,
                 h_speed,
                 h_files,
                 speed,
@@ -513,8 +519,7 @@ class Interests:
         self.set_similar_users(msg.users)
 
     def item_similar_users(self, msg):
-        rating = 0
-        self.set_similar_users({user: rating for user in msg.users}, msg.thing)
+        self.set_similar_users(msg.users, msg.thing)
 
     def user_country(self, user, country_code):
 

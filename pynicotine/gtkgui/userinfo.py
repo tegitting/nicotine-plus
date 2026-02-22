@@ -800,7 +800,7 @@ class UserInfo:
             days = int(days)
 
         except ValueError:
-            self.on_give_privileges(error=_("Please enter number of days."))
+            self.on_give_privileges(error=_("Please enter a valid number of days."))
             return
 
         core.users.request_give_privileges(self.user, days)
@@ -814,17 +814,19 @@ class UserInfo:
         else:
             days = core.users.privileges_left // 60 // 60 // 24
 
-        message = (_("Gift days of your Soulseek privileges to user %(user)s (%(days_left)s):") %
-                   {"user": self.user, "days_left": _("%(days)s days left") % {"days": days}})
+        message = ""
 
         if error:
-            message += "\n\n" + error
+            message += error + "\n\n"
+
+        message += (_("Gift days of your Soulseek privileges to user %(user)s (%(days_left)s):") %
+                    {"user": self.user, "days_left": _("%(days)s days left") % {"days": days}})
 
         EntryDialog(
-            parent=self.window,
+            application=self.window.application,
             title=_("Gift Privileges"),
             message=message,
-            action_button_label=_("_Give Privileges"),
+            action_button_label=_("_Send"),
             callback=self.on_give_privileges_response
         ).present()
 
@@ -862,7 +864,7 @@ class UserInfo:
         current_date_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         FileChooserSave(
-            parent=self.window,
+            application=self.window.application,
             callback=self.on_save_picture_response,
             initial_folder=core.downloads.get_default_download_folder(),
             initial_file=f"{self.user}_{current_date_time}.png"
