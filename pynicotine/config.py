@@ -238,8 +238,8 @@ class Config:
                 ],
                 "download_doubleclick": transfer_double_click_action,
                 "upload_doubleclick": transfer_double_click_action,
-                "downloadsexpanded": True,
-                "uploadsexpanded": True
+                "expand_downloads": "all",
+                "expand_uploads": "all"
             },
             "userbrowse": {
                 "expand_folders": True
@@ -260,8 +260,10 @@ class Config:
                     "thier": "their",
                     "tihs": "this"
                 },
+                "keywords": [],
                 "censorwords": False,
                 "replacewords": False,
+                "watch_keywords": False,
                 "tab": True,
                 "dropdown": False,
                 "characters": 3,
@@ -306,7 +308,7 @@ class Config:
                 "chat_room": {}
             },
             "searches": {
-                "expand_searches": True,
+                "expand_results": "all",
                 "group_searches": "folder_grouping",
                 "maxresults": 300,
                 "enable_history": True,
@@ -424,6 +426,7 @@ class Config:
                 "notification_popup_folder": True,
                 "notification_popup_queued_upload": True,
                 "notification_popup_private_message": True,
+                "notification_popup_private_mention": True,
                 "notification_popup_chatroom": False,
                 "notification_popup_chatroom_mention": True,
                 "notification_popup_wish": True
@@ -460,7 +463,9 @@ class Config:
                 "uploadsinsubdirs",
                 "reverseorder",
                 "lock",
-                "buddysharestrustedonly"
+                "buddysharestrustedonly",
+                "downloadsexpanded",
+                "uploadsexpanded"
             ),
             "server": (
                 "lastportstatuscheck",
@@ -534,7 +539,8 @@ class Config:
                 "reopen_tabs",
                 "max_stored_results",
                 "re_filter",
-                "remove_special_chars"
+                "remove_special_chars",
+                "expand_searches"
             ),
             "userinfo": (
                 "descrutf8",
@@ -669,6 +675,20 @@ class Config:
         # Enable previously disabled header bar on macOS (3.3.0)
         if sys.platform == "darwin" and old_default_player is not None:
             self.sections["ui"]["header_bar"] = True
+
+        # Migrate row expansion state (3.4.0)
+        expand_downloads = self.sections["transfers"].get("downloadsexpanded", None)
+        expand_uploads = self.sections["transfers"].get("uploadsexpanded", None)
+        expand_searches = self.sections["searches"].get("expand_searches", None)
+
+        if expand_downloads is not None:
+            self.sections["transfers"]["expand_downloads"] = "all" if expand_downloads else "none"
+
+        if expand_uploads is not None:
+            self.sections["transfers"]["expand_uploads"] = "all" if expand_uploads else "none"
+
+        if expand_searches is not None:
+            self.sections["searches"]["expand_results"] = "all" if expand_searches else "none"
 
     def _set_config(self):
         """Set config values parsed from file earlier."""

@@ -976,7 +976,11 @@ class UserBrowse:
 
     def on_upload_folder_response(self, dialog, _response_id, recurse):
 
-        user = dialog.get_entry_value()
+        if not self.__dict__:
+            # Tab was closed
+            return
+
+        user = dialog.get_entry_value().strip()
 
         if not user:
             return
@@ -1012,7 +1016,7 @@ class UserBrowse:
             str_title = _("Upload Folder To User") if num_folders == 1 else _("Upload Folders To User")
 
         EntryDialog(
-            parent=self.window,
+            application=self.window.application,
             title=str_title,
             message=_("Enter the name of the user you want to upload to:"),
             action_button_label=_("_Upload"),
@@ -1151,33 +1155,6 @@ class UserBrowse:
 
         self.user_popup_menu.toggle_user_items()
 
-    def _on_download_files(self, *_args):
-
-        folder_path = self.active_folder_path
-        browsed_user = core.userbrowse.users[self.user]
-
-        data = []
-        files = browsed_user.public_folders.get(folder_path)
-
-        if not files:
-            files = browsed_user.private_folders.get(folder_path)
-
-            if not files:
-                return
-
-        for file_data in files:
-            _code, basename, size, _ext, file_attributes, *_unused = file_data
-            file_path = "\\".join([folder_path, basename])
-            selected = basename in self.selected_files
-
-            data.append((self.user, file_path, size, file_attributes, selected))
-
-        if self.userbrowses.download_dialog is None:
-            self.userbrowses.download_dialog = Download(self.window.application)
-
-        self.userbrowses.download_dialog.update_files(data, partial_files=False)
-        self.userbrowses.download_dialog.present()
-
     def on_download_files(self, *_args, download_folder_path=None):
 
         folder_path = self.active_folder_path
@@ -1202,13 +1179,18 @@ class UserBrowse:
                 self.user, folder_path, file_data, download_folder_path=download_folder_path)
 
     def on_download_files_to_selected(self, selected_folder_paths, _data):
+
+        if not self.__dict__:
+            # Tab was closed
+            return
+
         self.window.application.previous_file_download_folder = next(iter(selected_folder_paths), None)
         self.on_download_files(download_folder_path=self.window.application.previous_file_download_folder)
 
     def on_download_files_to(self, *_args):
 
         FolderChooser(
-            parent=self.window,
+            application=self.window.application,
             title=_("Select Destination Folder for Files"),
             callback=self.on_download_files_to_selected,
             initial_folder=(
@@ -1219,7 +1201,11 @@ class UserBrowse:
 
     def on_upload_files_response(self, dialog, _response_id, _data):
 
-        user = dialog.get_entry_value()
+        if not self.__dict__:
+            # Tab was closed
+            return
+
+        user = dialog.get_entry_value().strip()
         folder_path = self.active_folder_path
 
         if not user or folder_path is None:
@@ -1233,7 +1219,7 @@ class UserBrowse:
     def on_upload_files(self, *_args):
 
         EntryDialog(
-            parent=self.window,
+            application=self.window.application,
             title=_("Upload File To User") if len(self.selected_files) == 1 else ("Upload Files To User"),
             message=_("Enter the name of the user you want to upload to:"),
             action_button_label=_("_Upload"),

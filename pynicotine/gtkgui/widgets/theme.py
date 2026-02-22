@@ -247,6 +247,10 @@ else:
     ICON_THEME = Gtk.IconTheme.get_default()  # pylint: disable=no-member
 
 CUSTOM_ICON_THEME_NAME = ".nicotine-icon-theme"
+FILE_STATUS_ICON_LABELS = {
+    "changes-prevent-symbolic": _("Private"),
+    "folder-download-symbolic": _("Downloading")
+}
 FILE_TYPE_ICON_LABELS = {
     "application-x-executable-symbolic": _("Executable"),
     "folder-music-symbolic": _("Audio"),
@@ -257,8 +261,12 @@ FILE_TYPE_ICON_LABELS = {
     "x-office-document-symbolic": _("Document"),
     "emblem-documents-symbolic": _("Text")
 }
-PRIVATE_ICON_LABELS = {
-    "changes-prevent-symbolic": _("Private")
+SHARED_FOLDER_ICON_LABELS = {
+    "dialog-warning-symbolic": _("Unreadable Folder")
+}
+FILTERED_ICON_LABELS = {
+    "reserved": _("Default Filters Active"),
+    "edit-find-replace-symbolic": _("Custom Filters Active")
 }
 USER_STATUS_ICON_LABELS = {
     "nplus-status-available": _("Online"),
