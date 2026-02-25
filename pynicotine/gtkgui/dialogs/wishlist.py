@@ -45,13 +45,6 @@ class WishList(Dialog):
             delete_accelerator_callback=self.on_remove_wish,
             search_entry=self.search_entry,
             columns={
-                "enabled": {
-                    "column_type": "toggle",
-                    "title": _("Enabled"),
-                    "width": 0,
-                    "toggle_callback": self.on_toggle_wish,
-                    "hide_header": True
-                },
                 "wish": {
                     "column_type": "text",
                     "title": _("Search Term"),
@@ -60,9 +53,16 @@ class WishList(Dialog):
                     "iterator_key": True,
                     "default_sort_type": "ascending"
                 },
+                "enabled": {
+                    "column_type": "toggle",
+                    "title": _("Automatic Search"),
+                    "width": 0,
+                    "toggle_callback": self.on_toggle_wish,
+                    "hide_header": True
+                },
                 "filtered": {
                     "column_type": "icon",
-                    "title": _("Filtered"),
+                    "title": _("Custom Filters"),
                     "width": 25,
                     "hide_header": True
                 },
@@ -123,8 +123,8 @@ class WishList(Dialog):
         search = core.search.wishlist[wish]
 
         self.list_view.add_row([
-            search.auto_search,
             wish,
+            search.auto_search,
             self.FILTERED_ICON_NAME if search.filter_mode != ResultFilterMode.NONE else "",
             time.strftime("%x", time.localtime(search.time_added)),
             search.time_added
