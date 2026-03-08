@@ -49,8 +49,11 @@ unstable build.
 Unstable [Flatpak](https://www.flatpak.org/setup/) packages are built after
 every commit to the master branch.
 
- - [Download Unstable Flatpak Package](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/flatpak-x86_64-package.zip)
+ - [Download Unstable Flatpak x64 Package](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/flatpak-x86_64-package.zip)
     — [`INFO`](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/flatpak-x86_64-package)  
+
+ - [Download Unstable Flatpak ARM64 Package](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/flatpak-aarch64-package.zip)
+    — [`INFO`](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/flatpak-aarch64-package)  
 
 ### Snap
 
@@ -107,11 +110,11 @@ Unstable installers are built after every commit to the master branch.
 
  - [Download Unstable macOS Intel Installer](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/macos-x86_64-installer.zip)
     — [`INFO`](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/macos-x86_64-installer)  
-   for macOS 14 Sonoma or later
+   for macOS 15 Sequoia or later
 
  - [Download Unstable macOS Apple Silicon Installer](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/macos-arm64-installer.zip)
     — [`INFO`](https://nightly.link/nicotine-plus/nicotine-plus/workflows/packaging/master/macos-arm64-installer)  
-   for macOS 14 Sonoma or later
+   for macOS 15 Sequoia or later
 
 
 ## All Platforms
