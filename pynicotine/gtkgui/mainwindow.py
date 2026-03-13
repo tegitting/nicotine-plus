@@ -117,9 +117,13 @@ class MainWindow(Window):
             self.private_title,
             self.private_toolbar,
             self.room_search_entry,
+            self.scan_progress_button,
+            self.scan_progress_button_icon,
             self.scan_progress_container,
+            self.scan_progress_error_icon,
             self.scan_progress_label,
             self.scan_progress_spinner,
+            self.scan_progress_stack,
             self.search_content,
             self.search_end,
             self.search_entry,
@@ -235,7 +239,6 @@ class MainWindow(Window):
             ("server-login", self.update_user_status),
             ("server-disconnect", self.update_user_status),
             ("set-connection-stats", self.set_connection_stats),
-            ("shares-preparing", self.shares_preparing),
             ("shares-ready", self.shares_ready),
             ("shares-scanning", self.shares_scanning),
             ("user-status", self.user_status)
@@ -1214,36 +1217,73 @@ class MainWindow(Window):
         if self.connections_label.get_text() != total_conns_text:
             self.connections_label.set_text(total_conns_text)
 
-    def shares_preparing(self):
-
-        label = _("Preparing Shares")
-
-        # Hide widget to keep tooltips for other widgets visible
-        self.scan_progress_container.set_visible(False)
-        self.scan_progress_container.set_tooltip_text(label)
-        self.scan_progress_label.set_label(label)
-        self.scan_progress_container.set_visible(True)
-        self.scan_progress_spinner.start()
-
     def shares_scanning(self, folder_count=None):
 
         if folder_count is not None:
+            if self.scan_progress_stack.get_visible_child() != self.scan_progress_button:
+                # Hide widget to keep tooltips for other widgets visible
+                self.scan_progress_container.set_visible(False)
+                self.scan_progress_container.set_tooltip_text(_("Scanning Shares"))
+                self.scan_progress_container.set_visible(True)
+
+                self.scan_progress_stack.set_visible_child(self.scan_progress_button)
+
             self.scan_progress_label.set_label(
                 _("Scanned Folders: %s") % humanize(folder_count))
             return
 
-        label = _("Scanning Shares")
+        label = _("Preparing Shares")
+
+        remove_css_class(self.scan_progress_container, "error")
+        add_css_class(self.scan_progress_container, "dim-label")
 
         # Hide widget to keep tooltips for other widgets visible
         self.scan_progress_container.set_visible(False)
-        self.scan_progress_container.set_tooltip_text(label)
+
+        self.scan_progress_error_icon.set_visible(False)
         self.scan_progress_label.set_label(label)
-        self.scan_progress_container.set_visible(True)
+        self.scan_progress_container.set_tooltip_text(label)
+        self.scan_progress_stack.set_visible_child(self.scan_progress_spinner)
         self.scan_progress_spinner.start()
 
-    def shares_ready(self, _successful):
-        self.scan_progress_container.set_visible(False)
+        icon_args = (Gtk.IconSize.BUTTON,) if GTK_API_VERSION == 3 else ()  # pylint: disable=no-member
+        self.scan_progress_button_icon.set_from_icon_name("media-playback-stop-symbolic", *icon_args)
+        self.scan_progress_button.set_action_name("app.stop-scanner")
+        self.scan_progress_button.set_tooltip_text(_("Stop Scanning"))
+
+        self.scan_progress_container.set_visible(True)
+
+    def shares_ready(self, successful):
+
+        if core.shares.rescanning:
+            # Scanner was restarted
+            return
+
+        self.scan_progress_container.set_visible(not successful)
         self.scan_progress_spinner.stop()
+
+        if successful:
+            return
+
+        label = _("Rescan Failed")
+
+        remove_css_class(self.scan_progress_container, "dim-label")
+        add_css_class(self.scan_progress_container, "error")
+
+        # Hide widget to keep tooltips for other widgets visible
+        self.scan_progress_container.set_visible(False)
+
+        self.scan_progress_error_icon.set_visible(True)
+        self.scan_progress_label.set_label(label)
+        self.scan_progress_container.set_tooltip_text(label)
+        self.scan_progress_stack.set_visible_child(self.scan_progress_button)
+
+        icon_args = (Gtk.IconSize.BUTTON,) if GTK_API_VERSION == 3 else ()  # pylint: disable=no-member
+        self.scan_progress_button_icon.set_from_icon_name("view-refresh-symbolic", *icon_args)
+        self.scan_progress_button.set_action_name("app.rescan-shares")
+        self.scan_progress_button.set_tooltip_text(_("Retry"))
+
+        self.scan_progress_container.set_visible(True)
 
     def on_toggle_status(self, *_args):
 
@@ -1291,11 +1331,9 @@ class MainWindow(Window):
             self.hide_window_button.emit("clicked")
             return
 
-        if sys.platform == "win32":
-            if GTK_API_VERSION >= 4:
-                self.widget.minimize()
-            else:
-                self.widget.iconify()
+        # Workaround for GTK issue where window size is wrong after restoring minimized window
+        if GTK_API_VERSION >= 4 and sys.platform == "win32" and self.widget.is_suspended():
+            self.widget.unminimize()
 
         super().hide()
 

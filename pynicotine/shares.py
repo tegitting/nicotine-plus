@@ -225,8 +225,7 @@ class Database:
 
 class ScannerState:
     INITIALIZED = "initialized"
-    RESCANNING = "rescanning"
-    FAILURE = "failure"
+    SUCCESS = "success"
 
 
 class ScannerLogMessage:
@@ -303,7 +302,6 @@ class Scanner:
                 self.writer.send(ScannerState.INITIALIZED)
 
             if self.rescan:
-                self.writer.send(ScannerState.RESCANNING)
                 self.writer.send(
                     ScannerLogMessage(_("Rebuilding shares…") if self.rebuild else _("Rescanning shares…"))
                 )
@@ -342,6 +340,8 @@ class Scanner:
                     )
                 )
 
+            self.writer.send(ScannerState.SUCCESS)
+
         except Exception:
             from traceback import format_exc
 
@@ -355,11 +355,10 @@ class Scanner:
                     }
                 )
             )
-            self.writer.send(ScannerState.FAILURE)
 
         finally:
-            self.writer.close()
             Shares.close_shares(self.share_dbs)
+            self.writer.close()
 
     def load_filters(self):
 
@@ -742,8 +741,9 @@ class Scanner:
 
 
 class Shares:
-    __slots__ = ("share_dbs", "requested_share_times", "initialized", "rescanning", "compressed_shares",
-                 "share_db_paths", "file_path_index", "_scanner_process", "_rescan_daily_timer_id")
+    __slots__ = ("share_dbs", "requested_share_times", "initialized", "compressed_shares",
+                 "share_db_paths", "file_path_index", "_scanner_process", "_scanner_reader",
+                 "_rescan_daily_timer_id")
 
     BACKSLASH_SENTINEL = "@@BACKSLASH@@"
 
@@ -752,7 +752,6 @@ class Shares:
         self.share_dbs = {}
         self.requested_share_times = {}
         self.initialized = False
-        self.rescanning = False
         self.compressed_shares = {
             PermissionLevel.PUBLIC: SharedFileListResponse(permission_level=PermissionLevel.PUBLIC),
             PermissionLevel.BUDDY: SharedFileListResponse(permission_level=PermissionLevel.BUDDY),
@@ -775,6 +774,7 @@ class Shares:
         self.file_path_index = ()
 
         self._scanner_process = None
+        self._scanner_reader = None
         self._rescan_daily_timer_id = None
 
         for event_name, callback in (
@@ -802,11 +802,9 @@ class Shares:
 
     def _quit(self):
 
+        self.stop_scanner()
         self.close_shares(self.share_dbs)
         self.initialized = False
-
-        if self._scanner_process is not None:
-            self._scanner_process.terminate()
 
     def _server_login(self, msg):
         if msg.success:
@@ -1133,8 +1131,7 @@ class Shares:
 
     def rescan_shares(self, init=False, rescan=True, rebuild=False, use_thread=True, force=False):
 
-        if self.rescanning:
-            return None
+        self.stop_scanner()
 
         if rescan and not force:
             # Verify all shares are mounted before allowing destructive rescan
@@ -1150,24 +1147,53 @@ class Shares:
                     return None
 
         # Hand over database control to the scanner process
-        self.rescanning = True
+        share_groups = self.get_shared_folders()
+        self._scanner_process, self._scanner_reader, writer = self._build_scanner_process(
+            share_groups, init, rescan, rebuild)
+
         self.close_shares(self.share_dbs)
         self.file_path_index = ()
 
-        events.emit("shares-preparing")
-
-        share_groups = self.get_shared_folders()
-        self._scanner_process, reader = self._build_scanner_process(share_groups, init, rescan, rebuild)
+        events.emit("shares-scanning")
         self._scanner_process.start()
+
+        # Ensure only the scanner process owns a handle, in order to promptly exit the
+        # message reader thread after the scanner process is terminated
+        writer.close()
 
         if use_thread:
             Thread(
-                target=self._process_scanner, args=(reader, events.emit_main_thread),
+                target=self._process_scanner, args=(
+                    self._scanner_process, self._scanner_reader, events.emit_main_thread
+                ),
                 name="ProcessShareScanner"
             ).start()
             return None
 
-        return self._process_scanner(reader)
+        successful = self._process_scanner(self._scanner_process, self._scanner_reader)
+        self._scanner_process = None
+        self._scanner_reader = None
+
+        return successful
+
+    @property
+    def rescanning(self):
+        return self._scanner_process is not None
+
+    def stop_scanner(self):
+
+        if self._scanner_reader is not None:
+            try:
+                self._scanner_reader.close()
+            except OSError:
+                # Already closed
+                pass
+
+            self._scanner_reader = None
+
+        if self._scanner_process is not None:
+            self._scanner_process.terminate()
+            self._scanner_process = None
 
     def check_shares_available(self):
 
@@ -1218,60 +1244,54 @@ class Shares:
             share_filters=config.sections["transfers"]["share_filters"]
         )
         scanner = context.Process(target=scanner_obj.run, daemon=True)
-        return scanner, reader
+        return scanner, reader, writer
 
-    def _process_scanner(self, reader, emit_event=None):
+    def _process_scanner(self, process, reader, emit_event=None):
 
-        successful = True
+        successful = False
         current_folder_count = None
+        last_count_update = time.monotonic()
 
-        while self._scanner_process.is_alive() and successful:
-            # Cooldown
-            time.sleep(0.2)
+        while True:
+            try:
+                item = reader.recv()
+            except Exception:
+                # Connection was closed
+                break
 
-            while True:
-                try:
-                    if not reader.poll():
-                        break
-                except BrokenPipeError:
-                    break
+            if isinstance(item, int):
+                if emit_event is not None:
+                    current_folder_count = item
 
-                try:
-                    item = reader.recv()
-                except EOFError:
-                    break
+            elif isinstance(item, ScannerLogMessage):
+                log.add(item.msg, item.msg_args)
 
-                if item == ScannerState.FAILURE:
-                    successful = False
-                    break
+            elif isinstance(item, tuple):
+                self.file_path_index = item
 
-                if isinstance(item, int):
-                    if emit_event is not None:
-                        current_folder_count = item
+            elif isinstance(item, SharedFileListResponse):
+                self.compressed_shares[item.permission_level] = item
 
-                elif isinstance(item, ScannerLogMessage):
-                    log.add(item.msg, item.msg_args)
+            elif item == ScannerState.INITIALIZED:
+                self.initialized = True
 
-                elif isinstance(item, tuple):
-                    self.file_path_index = item
+            elif item == ScannerState.SUCCESS:
+                successful = True
 
-                elif isinstance(item, SharedFileListResponse):
-                    self.compressed_shares[item.permission_level] = item
+            current_time = time.monotonic()
 
-                elif item == ScannerState.RESCANNING:
-                    if emit_event is not None:
-                        emit_event("shares-scanning")
-
-                elif item == ScannerState.INITIALIZED:
-                    self.initialized = True
-
-            if current_folder_count:
+            if current_folder_count and (current_time - last_count_update) > 0.2:
                 emit_event("shares-scanning", current_folder_count)
                 current_folder_count = None
+                last_count_update = current_time
 
-        reader.close()
-        self._scanner_process.close()
-        self._scanner_process = None
+        try:
+            reader.close()
+        except OSError:
+            # Already closed in the main thread
+            pass
+
+        process.join()
 
         if emit_event is not None:
             emit_event("shares-ready", successful)
@@ -1279,6 +1299,13 @@ class Shares:
         return successful
 
     def _shares_ready(self, successful):
+
+        if self._scanner_process is not None and self._scanner_process.is_alive():
+            # Scanner was restarted
+            return
+
+        self._scanner_process = None
+        self._scanner_reader = None
 
         # Scanning done, load shares in the main process again
         if successful:
@@ -1292,7 +1319,6 @@ class Shares:
             except Exception:
                 successful = False
 
-        self.rescanning = False
         self.start_rescan_daily_timer()
 
         if not successful:

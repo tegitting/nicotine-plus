@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.15-dev',
-                 'pypy-3.10', 'pypy-3.11']
+                 'pypy-3.11']
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: ['debian:bullseye', 'debian:bookworm', 'debian:unstable',
+        container: ['debian:bullseye', 'debian:bookworm', 'debian:trixie', 'debian:unstable',
                     'ubuntu:jammy', 'ubuntu:noble', 'ubuntu:devel']
     container: ${{ matrix.container }}
     steps:
@@ -89,11 +89,7 @@ jobs:
       - name: Install dependencies
         run: |
           dnf -y install gettext gobject-introspection gtk${{ matrix.gtk }} \
-            python3 python3-build python3-gobject python3-pycodestyle python3-setuptools \
-            python3-wheel
-
-      - name: PEP 8 style checks
-        run: python3 -m pycodestyle
+            python3 python3-build python3-gobject python3-setuptools python3-wheel
 
       - name: Integration and unit tests
         run: python3 -m unittest -v
@@ -120,14 +116,7 @@ jobs:
         run: |
           zypper refresh
           zypper -n install dejavu-fonts gettext-tools python313-build python313-gobject \
-            python313-gobject-Gdk python313-pycodestyle python313-pylint \
-            python313-setuptools python313-wheel typelib-1_0-Gtk-4_0
-
-      - name: PEP 8 style checks
-        run: python3.13 -m pycodestyle
-
-      - name: Linting
-        run: python3.13 -m pylint --recursive=y .
+            python313-gobject-Gdk python313-setuptools python313-wheel typelib-1_0-Gtk-4_0
 
       - name: Integration and unit tests
         run: python3.13 -m unittest -v
@@ -153,14 +142,7 @@ jobs:
       - name: Install dependencies
         run: |
           apk update
-          apk add font-dejavu gettext gtk4.0 py3-build py3-gobject3 py3-pycodestyle \
-            py3-pylint py3-setuptools py3-wheel
-
-      - name: PEP 8 style checks
-        run: python3 -m pycodestyle
-
-      - name: Linting
-        run: python3 -m pylint --recursive=y .
+          apk add font-dejavu gettext gtk4.0 py3-build py3-gobject3 py3-setuptools py3-wheel
 
       - name: Integration and unit tests
         run: python3 -m unittest -v
@@ -170,6 +152,65 @@ jobs:
 
       - name: Build without isolation
         run: python3 -m build --no-isolation
+
+  freebsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Tests
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: freebsd
+          version: '15.0'
+          run: |
+            sudo pkg install -y dejavu gettext gtk4 python3 devel/py-build devel/py-pygobject \
+              devel/py-setuptools devel/py-wheel
+            python3 -m unittest -v
+            python3 -m build
+            python3 -m build --no-isolation
+
+  openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Tests
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: openbsd
+          version: '7.8'
+          run: |
+            sudo pkg_add gettext-tools gtk+4 py3-build py3-gobject3 py3-setuptools py3-wheel
+
+            export DISPLAY=:99
+            Xvfb :99 > /dev/null 2>&1 &
+
+            python3 -m unittest -v
+            python3 -m build
+            python3 -m build --no-isolation
+
+  haiku:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Tests
+        uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: haiku
+          version: 'r1beta5'
+          run: |
+            pkgman install -y harfbuzz_glib gettext gtk4 build_python310 pygobject_python310 \
+              setuptools_python310 wheel_python310
+            python3.10 -m unittest -v
+            python3.10 -m build --no-isolation
 
   windows:
     timeout-minutes: 15
@@ -217,14 +258,11 @@ jobs:
       - name: Install additional dependencies
         run: python3 build-aux/windows/dependencies.py
 
-      - name: PEP 8 style checks
-        run: python3 -m pycodestyle
-
-      - name: Linting
-        run: python3 -m pylint --recursive=y .
-
       - name: Integration and unit tests
         run: python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m build
 
       - name: Build without isolation
         run: python3 -m build --no-isolation
@@ -252,12 +290,6 @@ jobs:
 
       - name: Install dependencies
         run: venv/bin/python3 build-aux/macos/dependencies.py
-
-      - name: PEP 8 style checks
-        run: venv/bin/python3 -m pycodestyle
-
-      - name: Linting
-        run: venv/bin/python3 -m pylint --recursive=y .
 
       - name: Integration and unit tests
         run: venv/bin/python3 -m unittest -v
