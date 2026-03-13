@@ -12,7 +12,7 @@ If you want to download the latest unstable build and help test Nicotine+,
 see [TESTING.md](TESTING.md).
 
 
-## GNU/Linux, *BSD, Haiku, Solaris
+## GNU/Linux, *BSD, Haiku, illumos
 
 ### Operating System Packages
 
@@ -22,9 +22,10 @@ using the package manager.
 | Operating System                                                                         | Package Name               |
 |------------------------------------------------------------------------------------------|----------------------------|
 | [Alpine Linux Edge](https://pkgs.alpinelinux.org/packages?name=nicotine-plus)            | `nicotine-plus`            |
+| [ALT Linux](https://packages.altlinux.org/en/sisyphus/srpms/nicotine-plus/)              | `nicotine-plus`            |
 | [Arch Linux](https://archlinux.org/packages/extra/any/nicotine+/)                        | `nicotine+`                |
 | [Chimera Linux](https://pkgs.chimera-linux.org/packages?name=nicotine-plus)              | `nicotine-plus`            |
-| [Debian Unstable/Testing](https://tracker.debian.org/pkg/nicotine)                       | `nicotine`                 |
+| [Debian](https://tracker.debian.org/pkg/nicotine)                                        | `nicotine`                 |
 | [Fedora](https://packages.fedoraproject.org/pkgs/nicotine+/nicotine+/)                   | `nicotine+`                |
 | [FreeBSD Ports](https://www.freshports.org/net-p2p/py-nicotine-plus)                     | `net-p2p/py-nicotine-plus` |
 | [Gentoo](https://packages.gentoo.org/packages/net-p2p/nicotine+)                         | `net-p2p/nicotine+`        |
@@ -53,7 +54,8 @@ Packages listed below can be installed on different GNU/Linux distributions.
 ### PPA (Ubuntu/Debian)
 
 To use [stable packages](https://launchpad.net/~nicotine-team/+archive/ubuntu/stable)
-on Ubuntu and Debian, add the *nicotine-team/stable* PPA repository.
+by the Nicotine+ team on Ubuntu and Debian, add the *nicotine-team/stable* PPA
+repository.
 
 On Ubuntu and distributions based on it (e.g. Linux Mint, elementary OS,
 Pop!_OS, various Ubuntu flavors), run the following:
@@ -79,7 +81,7 @@ If you prefer to install a .deb package manually, you can
 > update automatically. You need to download and install the latest version
 > from the link above after every update.
 
-### PyPi (GNU/Linux, *BSD, Solaris)
+### PyPi (GNU/Linux, *BSD, illumos)
 
 If no package is available for your operating system, you can install Nicotine+
 from [PyPi](https://pypi.org/project/nicotine-plus/).
