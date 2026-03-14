@@ -1,56 +1,65 @@
-from pynicotine.pluginsystem import BasePlugin
+import random
 import time
+import threading
+from pynicotine.pluginsystem import BasePlugin
 
-# This metadata ensures it shows up as "Wishlist Searcher" in your settings
 metadata = {
     "name": "Wishlist Searcher",
-    "description": "Scans your wishlist and triggers searches automatically.",
+    "description": "Automatically searches for wishlist items at safe intervals.",
     "author": "JD",
-    "version": "1.1",
+    "version": "1.2",
 }
 
 class WishlistSearcher(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.job = None
+        self.running = False
+        self.thread = None
 
     def init(self):
-        """Initialize the plugin and register the chat command."""
-        # In Nicotine+ 3.3+, commands are registered via self.core.commands
+        # Universal registration for Nicotine+ 3.x and 3.4.dev
+        cmd_name = "wishlist_start"
+        callback = self.start_loop
+        
         try:
-            self.core.commands.register_command(
-                "wishlist_start", 
-                self.start_loop, 
-                "Usage: /wishlist_start - Starts the automatic wishlist search loop"
-            )
-            self.log("Plugin initialized. Type /wishlist_start in any chat to begin.")
-        except AttributeError:
-            self.log("Critical Error: Could not find command registration system.")
+            # Method 1: Modern Dev Build (core.command_handler)
+            if hasattr(self.core, 'command_handler'):
+                self.core.command_handler.register_command(cmd_name, callback)
+            # Method 2: Stable 3.x (core.commands)
+            elif hasattr(self.core, 'commands'):
+                self.core.commands.register_command(cmd_name, callback)
+            # Method 3: Plugin Base (BasePlugin legacy)
+            else:
+                self.register_command(cmd_name, callback)
+            
+            self.log("Successfully registered /wishlist_start")
+        except Exception as e:
+            self.log(f"Registration failed: {str(e)}")
 
     def start_loop(self, *args):
-        """Starts the background search process."""
-        self.log("Starting wishlist search loop...")
-        
-        # Get the wishlist items
-        wishlist_items = self.core.wishlist.get_wishlist()
-        
-        if not wishlist_items:
-            self.log("Wishlist is empty. Add items first!")
-            return
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self.search_loop, daemon=True)
+            self.thread.start()
+            return "Wishlist Searcher: **Online**."
+        return "Already running."
 
-        for item in wishlist_items:
-            # item is usually the search string
-            self.log(f"Searching for: {item}")
-            self.core.search.search(item)
+    def search_loop(self):
+        while self.running:
+            wishlist = self.core.wishlist.get_wishlist()
+            if not wishlist:
+                self.log("Wishlist is empty.")
+                self.running = False
+                break
+
+            item = random.choice(list(wishlist.keys()))
+            self.log(f"Auto-searching: {item}")
+            self.core.search.search_request(item)
             
-            # Sleep for 5 seconds between searches to avoid Soulseek spam filters
-            time.sleep(5)
-            
-        self.log("Finished scanning wishlist.")
+            # Wait 90-180 seconds (Safety delay for Soulseek)
+            time.sleep(random.randint(90, 180))
 
-    def stop(self):
-        """Clean up when plugin is disabled."""
-        self.log("Wishlist Searcher disabled.")
+    def log(self, msg):
+        print(f"[WishlistSearcher] {msg}")
 
-# Crucial: This line tells Nicotine+ which class to load
 Plugin = WishlistSearcher
