@@ -1,37 +1,44 @@
-# SPDX-FileCopyrightText: 2020-2023 Nicotine+ Contributors
-# SPDX-License-Identifier: GPL-3.0-or-later
-
+import random
+import time
+import threading
 from pynicotine.pluginsystem import BasePlugin
 
-
-class Plugin(BasePlugin):
-
+class HeritageSearch(BasePlugin):
     def __init__(self, *args, **kwargs):
-
         super().__init__(*args, **kwargs)
+        self.running = False
+        self.thread = None
 
-        self.np_format = None
+    def init(self):
+        # This makes it show up in the Plugins list
+        self.register_command("start_heritage", self.start_loop)
+        self.register_command("stop_heritage", self.stop_loop)
+        self.log("Heritage Searcher Ready. Type /start_heritage in chat.")
 
-    def outgoing_global_search_event(self, text):
-        return (self.get_np(text),)
+    def start_loop(self, *args):
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self.search_loop, daemon=True)
+            self.thread.start()
+            return "Heritage Searcher: Started."
+        return "Already running."
 
-    def outgoing_room_search_event(self, rooms, text):
-        return rooms, self.get_np(text)
+    def stop_loop(self, *args):
+        self.running = False
+        return "Heritage Searcher: Stopping..."
 
-    def outgoing_buddy_search_event(self, text):
-        return (self.get_np(text),)
+    def search_loop(self):
+        while self.running:
+            # Get your actual wishlist from the Nicotine core
+            wishlist = self.core.wishlist.get_wishlist()
+            if not wishlist:
+                break
 
-    def outgoing_user_search_event(self, users, text):
-        return users, self.get_np(text)
+            item = random.choice(list(wishlist.keys()))
+            self.core.search.search_request(item)
+            
+            # Randomized 'Human' delay for your M5
+            time.sleep(random.randint(60, 180))
 
-    def get_np(self, text):
-        self.np_format = text
-        now_playing = self.core.now_playing.get_np(get_format=self.get_format)
-
-        if now_playing:
-            return now_playing
-
-        return text
-
-    def get_format(self):
-        return self.np_format
+    def log(self, msg):
+        print(f"[HeritageSearch] {msg}")
