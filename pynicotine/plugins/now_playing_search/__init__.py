@@ -1,6 +1,6 @@
 from pynicotine.pluginsystem import BasePlugin
 from gi.repository import GLib
-import time
+import random
 
 class Plugin(BasePlugin):
 
@@ -8,46 +8,60 @@ class Plugin(BasePlugin):
         super().__init__(*args, **kwargs)
         self.loop_id = None
         self.plugin_running = False
+        self.current_index = 0
 
     def init(self):
         self.plugin_running = True
-        self.log("--- Plugin Enabled ---")
-        # Start the loop (first run after 10s so we're connected, then every 60s)
-        self.loop_id = GLib.timeout_add_seconds(10, self.force_search_loop)
+        self.current_index = 0
+        self.log("--- Sequential Now Playing Searcher Enabled (1 search per cycle) ---")
+        initial_delay = random.uniform(5, 15)
+        self.log(f"Starting in ~{initial_delay:.1f} seconds")
+        self.loop_id = GLib.timeout_add_seconds(int(initial_delay), self.search_next)
 
-    def force_search_loop(self):
+    def search_next(self):
         if not self.plugin_running:
             return False
 
-        # Correct config access (autosearch lives under [server])
         try:
             wishlist = self.config.sections["server"]["autosearch"]
         except Exception as e:
-            self.log(f"Config Error: {e}")
-            return True
+            self.log(f"Cannot read autosearch list: {e}")
+            self._reschedule()
+            return False
 
-        if wishlist and isinstance(wishlist, list):
-            self.log(f"Manual override: Triggering {len(wishlist)} searches...")
-            for query in wishlist:
-                if not self.plugin_running:
-                    break
+        if not isinstance(wishlist, list) or len(wishlist) == 0:
+            self.log("Wishlist/autosearch is empty.")
+            self._reschedule()
+            return False
 
-                self.log(f"Forcing search for: {query}")
-                try:
-                    # Correct search call - use "global" or "wishlist" depending on what you want
-                    self.core.search.do_search(query, mode="global")
-                    # Optional: tiny non-blocking delay if you really need it
-                    # GLib.timeout_add(2000, lambda: None)  # but usually not needed
-                except Exception as e:
-                    self.log(f"Search failed: {e}")
-        else:
-            self.log("Autosearch list is empty or not found.")
+        total = len(wishlist)
+        idx = self.current_index % total
+        query = wishlist[idx]
+        position = f"{idx + 1}/{total}"
 
-        return True
+        self.log(f"[{position}] Searching: {query}")
 
-    def disable(self):  # <-- renamed from stop
+        try:
+            self.core.search.do_search(query, mode="global")
+        except Exception as e:
+            self.log(f"  └─ Failed: {e}")
+
+        self.current_index += 1
+        self._reschedule()
+        return False
+
+    def _reschedule(self):
+        if not self.plugin_running:
+            return
+
+        # delay = random.uniform(45, 120)   # wider range alternative
+        delay = random.uniform(30, 90)
+        self.log(f"Next in ~{delay:.0f} s")
+        self.loop_id = GLib.timeout_add_seconds(int(delay), self.search_next)
+
+    def disable(self):
         self.plugin_running = False
-        self.log("--- Plugin Disabled ---")
-        if self.loop_id:
+        self.log("--- Sequential Searcher Disabled ---")
+        if self.loop_id is not None:
             GLib.source_remove(self.loop_id)
             self.loop_id = None
