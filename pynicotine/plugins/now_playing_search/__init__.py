@@ -2,12 +2,6 @@ from pynicotine.pluginsystem import BasePlugin
 from gi.repository import GLib
 
 class Plugin(BasePlugin):
-    metadata = {
-        "name": "Reloop Wishlist Runner", # Unique name for verification
-        "desc": "Forces wishlist searches every 60 seconds",
-        "authors": ["Gemini"],
-        "version": "2.2",
-    }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
