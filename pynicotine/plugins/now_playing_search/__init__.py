@@ -1,59 +1,45 @@
-import random
-import time
-import threading
-from pynicotine.pluginsystem import BasePlugin
+from pynicotine.plugins import BasePlugin
+import gobject
 
-metadata = {
-    "name": "Wishlist Searcher", # This changes the UI name
-    "description": "Automatically scans wishlist items for your DVS collection.",
-    "author": "JD",
-    "version": "2.0",
-}
+class Plugin(BasePlugin):
+    metadata = {
+        "name": "Force Wishlist Searcher",
+        "desc": "Bypasses the 12-minute wait and searches immediately",
+        "authors": ["Gemini"],
+        "version": "2.0",
+    }
 
-class WishlistSearcher(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.running = False
+        self.loop_id = None
 
-    def init(self):
-        """Called when plugin is enabled."""
-        self.running = True
-        # Using a daemon thread so it doesn't hang Nicotine+ on exit
-        self.thread = threading.Thread(target=self.search_loop, daemon=True)
-        self.thread.start()
-        self.log("Wishlist Searcher: **Active** and monitoring.")
+    def plugin_enabled(self):
+        """This triggers when you check the box in Preferences"""
+        self.log("--- Plugin Force-Enabled! ---")
+        # Give the core 5 seconds to breathe, then start
+        self.loop_id = gobject.timeout_add(5000, self.force_search_loop)
 
-    def search_loop(self):
-        # 15s delay to let the app finish connecting to Soulseek
-        time.sleep(15) 
+    def force_search_loop(self):
+        if not self.enabled:
+            return False
+
+        wishlist = self.core.config.get_sections_list("wishlist")
+        if not wishlist:
+            self.log("Wishlist is empty. Nothing to search.")
+            return True # Keep loop alive but do nothing
+
+        self.log(f"Triggering search for {len(wishlist)} items...")
         
-        while self.running:
-            try:
-                # 3.4.dev uses .core.wishlist.wishlist as a dictionary
-                wishlist = getattr(self.core.wishlist, 'wishlist', {})
-                items = list(wishlist.keys())
+        for item in wishlist:
+            # item[0] is usually the search term
+            query = item[0]
+            self.log(f"Searching for: {query}")
+            self.core.search.search(query)
 
-                if items:
-                    target = random.choice(items)
-                    self.log(f"Auto-searching for: {target}")
-                    self.core.search.search_request(target)
-                else:
-                    self.log("Wishlist empty. Waiting 10 minutes...")
+        # Re-run every 2 minutes (120,000ms) instead of 12
+        return True 
 
-            except Exception as e:
-                self.log(f"Loop error: {str(e)}")
-
-            # Wait 8 to 15 minutes to stay under the radar
-            wait = random.randint(480, 900)
-            time.sleep(wait)
-
-    def stop(self):
-        """Called when plugin is disabled."""
-        self.running = False
-        self.log("Wishlist Searcher: **Stopped**.")
-
-    def log(self, msg):
-        # This will show up in your Nicotine+ logs
-        print(f"[WishlistSearcher] {msg}")
-
-Plugin = WishlistSearcher
+    def plugin_disabled(self):
+        self.log("Plugin Disabled. Stopping loop.")
+        if self.loop_id:
+            gobject.source_remove(self.loop_id)
