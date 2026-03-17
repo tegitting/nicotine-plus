@@ -437,35 +437,40 @@ class UserBrowse:
                 core.send_message_to_network_thread(RemoveAllowedResponse(SharedFileListResponse, username))
                 break
 
-    def _shared_file_list_response(self, msg):
+def _shared_file_list_response(self, msg):
+    username = msg.username
+    browsed_user = self.users.get(username)
+    num_folders = len(msg.list) + len(msg.privatelist)
+    private_folders = len(msg.privatelist)
+    num_files = 0
+    shared_size = 0
+    private_share_size = 0 
 
-        username = msg.username
-        browsed_user = self.users.get(username)
-        num_folders = len(msg.list) + len(msg.privatelist)
-        private_folders = len(msg.privatelist)
-        num_files = 0
-        shared_size = 0
+    for _folder_path, files in chain(msg.list, msg.privatelist):
+        for file_info in files:
+            shared_size += file_info[2]
 
-        for _folder_path, files in chain(msg.list, msg.privatelist):
-            for file_info in files:
-                shared_size += file_info[2]
+        num_files += len(files)
 
-            num_files += len(files)
+    for _folder_path, files in msg.privatelist:
+        for file_info in files:
+            private_share_size += file_info[2]
 
-        if browsed_user is not None:
-            browsed_user.public_folders = dict(msg.list)
-            browsed_user.private_folders = dict(msg.privatelist)
-            browsed_user.num_folders = num_folders
-            browsed_user.num_files = num_files
-            browsed_user.shared_size = shared_size
+    if browsed_user is not None:
+        browsed_user.public_folders = dict(msg.list)
+        browsed_user.private_folders = dict(msg.privatelist)
+        browsed_user.num_folders = num_folders
+        browsed_user.num_files = num_files
+        browsed_user.shared_size = shared_size
 
-        core.send_message_to_network_thread(RemoveAllowedResponse(SharedFileListResponse, username))
+    core.send_message_to_network_thread(RemoveAllowedResponse(SharedFileListResponse, username))
 
-        core.pluginhandler.user_stats_notification(username, stats={
-            "username": username,
-            "files": num_files,
-            "dirs": num_folders,
-            "private_dirs": private_folders,
-            "shared_size": shared_size,
-            "source": "peer"
-        })
+    core.pluginhandler.user_stats_notification(username, stats={
+        "username": username,
+        "files": num_files,
+        "dirs": num_folders,
+        "private_dirs": private_folders,
+        "shared_size": shared_size,
+        "private_share_size": private_share_size,
+        "source": "peer"
+    })
