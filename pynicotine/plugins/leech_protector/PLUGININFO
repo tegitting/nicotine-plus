@@ -4,4 +4,4 @@
 Version = "0.2"
 Authors = ["tegitting"]
 Name = "Leech Protector"
-Description = "Detects leechers, sends a message and optionally bans them.\nThis plugin is NOT supported by Nicotine+ developers!"
+Description = "Detects leechers, sends a message and optionally bans them."
