@@ -438,17 +438,26 @@ class UserBrowse:
                 break
 
     def _shared_file_list_response(self, msg):
-
         username = msg.username
         browsed_user = self.users.get(username)
         num_folders = len(msg.list) + len(msg.privatelist)
+        private_folders = len(msg.privatelist)
         num_files = 0
         shared_size = 0
+        private_shared_size = 0  # Initialize the private size counter
 
-        for _folder_path, files in chain(msg.list, msg.privatelist):
+        # Calculate sizes for public folders
+        for _folder_path, files in msg.list:
             for file_info in files:
                 shared_size += file_info[2]
+            num_files += len(files)
 
+        # Calculate sizes for private folders separately
+        for _folder_path, files in msg.privatelist:
+            for file_info in files:
+                file_size = file_info[2]
+                shared_size += file_size
+                private_shared_size += file_size
             num_files += len(files)
 
         if browsed_user is not None:
@@ -457,13 +466,16 @@ class UserBrowse:
             browsed_user.num_folders = num_folders
             browsed_user.num_files = num_files
             browsed_user.shared_size = shared_size
+            browsed_user.private_shared_size = private_shared_size
 
         core.send_message_to_network_thread(RemoveAllowedResponse(SharedFileListResponse, username))
 
         core.pluginhandler.user_stats_notification(username, stats={
-            "avgspeed": None,
+            "username": username,
             "files": num_files,
             "dirs": num_folders,
+            "private_dirs": private_folders,
             "shared_size": shared_size,
+            "private_shared_size": private_shared_size,
             "source": "peer"
         })
