@@ -5,11 +5,11 @@ import random
 class Plugin(BasePlugin):
 
     # Simple preset system
-    settings = {
+    self.settings = {
         "frequency": "medium"          # default
     }
 
-    metasettings = {
+    self.metasettings = {
         "frequency": {
             "type": "option",
             "options": ["fast", "medium", "slow"],
