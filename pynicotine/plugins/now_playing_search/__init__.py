@@ -4,28 +4,27 @@ import random
 
 class Plugin(BasePlugin):
 
-    # Simple preset system
-    self.settings = {
-        "frequency": "medium"          # default
-    }
-
-    self.metasettings = {
-        "frequency": {
-            "type": "option",
-            "options": ["fast", "medium", "slow"],
-            "label": "Search frequency (lower = more spaced out / safer from bot detection)"
-        }
-    }
-
-    # Internal ranges (you can tweak these if you ever want)
-    RANGES = {
-        "fast":   (20,  60),   # more frequent
-        "medium": (45, 120),   # balanced
-        "slow":   (90, 300)    # very spaced out (recommended for long sessions)
-    }
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.settings = {
+            "frequency": "medium"
+        }
+
+        self.metasettings = {
+            "frequency": {
+                "type": "dropdown",
+                "options": ("fast", "medium", "slow"),
+                "description": "Search frequency (lower = more spaced out / safer from bot detection)"
+            }
+        }
+
+        self.RANGES = {
+            "fast":   (20,  60),
+            "medium": (45, 120),
+            "slow":   (90, 300)
+        }
+
         self.loop_id = None
         self.plugin_running = False
         self.current_index = 0
