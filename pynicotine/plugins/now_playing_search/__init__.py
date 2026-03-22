@@ -1,37 +1,68 @@
-# SPDX-FileCopyrightText: 2020-2023 Nicotine+ Contributors
-# SPDX-License-Identifier: GPL-3.0-or-later
-
 from pynicotine.pluginsystem import BasePlugin
-
+from gi.repository import GLib
+import random
 
 class Plugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
-
         super().__init__(*args, **kwargs)
+        self.loop_id = None
+        self.plugin_running = False
+        self.current_index = 0 
 
-        self.np_format = None
+    def init(self):
+        self.plugin_running = True
+        self.current_index = 0
+        self.log("--- Now Playing Wishlist Searcher Enabled (one search per cycle) ---")
+        # First search after a short random delay so you see it working quickly
+        initial_delay = random.uniform(5, 15)
+        self.log(f"First search scheduled in ~{initial_delay:.1f} seconds")
+        self.loop_id = GLib.timeout_add_seconds(int(initial_delay), self.search_next)
 
-    def outgoing_global_search_event(self, text):
-        return (self.get_np(text),)
+    def search_next(self):
+        if not self.plugin_running:
+            return False
 
-    def outgoing_room_search_event(self, rooms, text):
-        return rooms, self.get_np(text)
+        try:
+            wishlist = self.config.sections["server"]["autosearch"]
+        except Exception as e:
+            self.log(f"Config Error: {e}")
+            self._reschedule()
+            return False
 
-    def outgoing_buddy_search_event(self, text):
-        return (self.get_np(text),)
+        if not wishlist or not isinstance(wishlist, list) or len(wishlist) == 0:
+            self.log("Autosearch list is empty — nothing to search.")
+            self._reschedule()
+            return False
 
-    def outgoing_user_search_event(self, users, text):
-        return users, self.get_np(text)
+        # Pick the current one (modulo to loop around)
+        query = wishlist[self.current_index % len(wishlist)]
+        self.log(f"→ Searching: {query}")
 
-    def get_np(self, text):
-        self.np_format = text
-        now_playing = self.core.now_playing.get_np(get_format=self.get_format)
+        try:
+            self.core.search.do_search(query, mode="global")
+        except Exception as e:
+            self.log(f"Search failed for '{query}': {e}")
 
-        if now_playing:
-            return now_playing
+        # Move to next item for the following cycle
+        self.current_index += 1
 
-        return text
+        # Always schedule the next one
+        self._reschedule()
+        return False  # Don't auto-repeat
 
-    def get_format(self):
-        return self.np_format
+    def _reschedule(self):
+        if not self.plugin_running:
+            return
+
+        delay = random.uniform(30, 90)
+        minutes = delay / 60
+        self.log(f"Next search scheduled in ~{delay:.0f} seconds (~{minutes:.1f} min)")
+        self.loop_id = GLib.timeout_add_seconds(int(delay), self.search_next)
+
+    def disable(self):
+        self.plugin_running = False
+        self.log("--- Now Playing Wishlist Searcher Disabled ---")
+        if self.loop_id:
+            GLib.source_remove(self.loop_id)
+            self.loop_id = None
