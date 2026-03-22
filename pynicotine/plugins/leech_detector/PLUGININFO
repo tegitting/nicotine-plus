@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 Version = "2023-11-11r00"
-Authors = ["Nicotine+"]
-Name = "Leech Detector"
-Description = "Detects when leechers are downloading, and sends them a message after a file is leeched.\n\nMessage placeholders:\n- %files% : number of required files\n- %folders% : number of required folders"
+Authors = ["tegitting"]
+Name = "GateKeeper"
+Description = ""
