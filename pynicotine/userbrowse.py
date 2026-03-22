@@ -27,7 +27,7 @@ from pynicotine.utils import humanize
 
 class BrowsedUser:
     __slots__ = ("username", "public_folders", "private_folders", "num_folders", "num_files",
-                 "shared_size")
+                 "shared_size", "private_shared_size")
 
     def __init__(self, username):
 
@@ -37,12 +37,13 @@ class BrowsedUser:
         self.num_folders = None
         self.num_files = None
         self.shared_size = None
+        self.private_shared_size = None
 
     def clear(self):
 
         self.public_folders.clear()
         self.private_folders.clear()
-        self.num_folders = self.num_files = self.shared_size = None
+        self.num_folders = self.num_files = self.shared_size = self.private_shared_size = None
 
 
 class UserBrowse:
