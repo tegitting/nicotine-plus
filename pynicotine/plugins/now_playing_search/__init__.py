@@ -4,24 +4,24 @@ import random
 
 class Plugin(BasePlugin):
 
+    # Simple preset system
     settings = {
-        "min_delay": 30,
-        "max_delay": 90
+        "frequency": "medium"          # default
     }
 
     metasettings = {
-        "min_delay": {
-            "type": "int",
-            "min": 10,
-            "max": 600,
-            "label": "Minimum delay between searches (seconds)"
-        },
-        "max_delay": {
-            "type": "int",
-            "min": 10,
-            "max": 600,
-            "label": "Maximum delay between searches (seconds)"
+        "frequency": {
+            "type": "option",
+            "options": ["fast", "medium", "slow"],
+            "label": "Search frequency (lower = more spaced out / safer from bot detection)"
         }
+    }
+
+    # Internal ranges (you can tweak these if you ever want)
+    RANGES = {
+        "fast":   (20,  60),   # more frequent
+        "medium": (45, 120),   # balanced
+        "slow":   (90, 300)    # very spaced out (recommended for long sessions)
     }
 
     def __init__(self, *args, **kwargs):
@@ -29,7 +29,7 @@ class Plugin(BasePlugin):
         self.loop_id = None
         self.plugin_running = False
         self.current_index = 0
-        self.connected = False   # ← connection flag
+        self.connected = False
 
     def init(self):
         self.plugin_running = True
@@ -41,9 +41,12 @@ class Plugin(BasePlugin):
         except Exception:
             self.connected = False
 
-        self.log("--- Searcher Enabled (1 search per cycle) ---")
-        self.log(f"Current range: {self.settings['min_delay']}–{self.settings['max_delay']} seconds")
-        self.log(f"Initial status: {'CONNECTED ✓' if self.connected else 'OFFLINE — waiting for connection'}")
+        freq = self.settings["frequency"]
+        min_d, max_d = self.RANGES[freq]
+
+        self.log("--- Wishlist Plugin Enabled (1 search per cycle) ---")
+        self.log(f"Frequency: {freq.upper()} → {min_d}–{max_d} seconds (randomised)")
+        self.log(f"Initial status: {'CONNECTED ✓' if self.connected else 'OFFLINE — waiting'}")
 
         initial_delay = random.uniform(5, 15)
         self.log(f"Starting in ~{initial_delay:.1f} seconds")
@@ -51,18 +54,18 @@ class Plugin(BasePlugin):
 
     def server_connect_notification(self):
         self.connected = True
-        self.log("Connected to Soulseek — searches enabled")
+        self.log("Connected — searches active")
 
     def server_disconnect_notification(self, userchoice):
         self.connected = False
-        self.log("Disconnected from Soulseek — searches paused until reconnect")
+        self.log("Disconnected — searches paused")
 
     def search_next(self):
         if not self.plugin_running:
             return False
 
         if not self.connected:
-            self.log("Not connected — skipping this cycle")
+            self.log("Not connected — skipping cycle")
             self._reschedule()
             return False
 
@@ -74,7 +77,7 @@ class Plugin(BasePlugin):
             return False
 
         if not isinstance(wishlist, list) or len(wishlist) == 0:
-            self.log("Wishlist/autosearch is empty.")
+            self.log("Wishlist is empty.")
             self._reschedule()
             return False
 
@@ -98,11 +101,11 @@ class Plugin(BasePlugin):
         if not self.plugin_running:
             return
 
-        min_d = min(self.settings["min_delay"], self.settings["max_delay"])
-        max_d = max(self.settings["min_delay"], self.settings["max_delay"])
+        freq = self.settings["frequency"]
+        min_d, max_d = self.RANGES[freq]
         delay = random.uniform(min_d, max_d)
 
-        self.log(f"Next in ~{delay:.0f} s (range: {min_d}–{max_d})")
+        self.log(f"Next search in ~{delay:.0f} s (frequency: {freq})")
         self.loop_id = GLib.timeout_add_seconds(int(delay), self.search_next)
 
     def disable(self):
