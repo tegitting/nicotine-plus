@@ -5,24 +5,11 @@
 
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
-from dataclasses import dataclass
 import time
 import threading
 
 GB_IN_BYTES = 1024 ** 3
 AUTO_MESSAGE_PREFIX = "[Auto-Message] "
-
-
-@dataclass
-class ShareStats:
-    """Simple structure for user share statistics."""
-    files: int
-    folders: int
-    private_folders: int
-    total_shared: int          # bytes
-    private_shared: int        # bytes
-    public_shared: int         # bytes
-    public_percent: float
 
 
 class Plugin(BasePlugin):
@@ -70,9 +57,45 @@ class Plugin(BasePlugin):
             "size_ratio_message": "Your public share is too small or too much is locked/private. Please share more openly.",
         }
 
-        self.metasettings = { ... }   # ← your entire metasettings block stays exactly the same
+        self.metasettings = {
+            "open_private_chat": {"description": "Open private chat tabs when sending messages?", "type": "bool"},
 
-        self.probed_users = {}        # NEW: tracks users we requested stats for
+            "no_files_ban": {"description": "Ban users with 0 files/folders shared?", "type": "bool"},
+            "no_files_pm": {"description": "Send message to users with 0 shares?", "type": "bool"},
+            "no_files_message": {"type": "string"},
+
+            "all_privates_ban": {"description": "Ban users with all shared folders locked?", "type": "bool"},
+            "all_privates_pm": {"description": "Send a message to users with all shares locked?", "type": "bool"},
+            "all_privates_message": {"type": "string"},
+
+            "empty_folders_ban": {"description": "Ban users with no files (only empty shared folders)?", "type": "bool"},
+            "empty_folders_pm": {"description": "Send a message to users with no files?", "type": "bool"},
+            "empty_folders_message": {"type": "string"},
+
+            "num_files": {"description": "Minimum number of shared files required:", "type": "int", "minimum": 0},
+            "num_files_ban": {"description": "Apply a ban for file counts below minimum?", "type": "bool"},
+            "num_files_pm": {"description": "Send a message to users below file threshold?", "type": "bool"},
+            "num_files_message": {"type": "string"},
+
+            "num_folders": {"description": "Minimum number of shared folders required:", "type": "int", "minimum": 0},
+            "num_folders_ban": {"description": "Apply a ban for folder counts below minimum?", "type": "bool"},
+            "num_folders_pm": {"description": "Send a message to users below folder threshold?", "type": "bool"},
+            "num_folders_message": {"type": "string"},
+
+            "share_size": {"description": "Minimum total share size required:", "type": "int", "minimum": 0, "maximum": 1000},
+            "share_size_unit": {"description": "Unit of measurement:", "type": "dropdown", "options": ("MB", "GB")},
+            "share_size_ban": {"description": "Apply a ban for total share sizes below minimum?", "type": "bool"},
+            "share_size_pm": {"description": "Send a message about total share sizes?", "type": "bool"},
+            "share_size_message": {"type": "string"},
+
+            "min_public_percent": {"description": "Minimum % of total share that must be PUBLIC (70-90 recommended):", "type": "int", "minimum": 0, "maximum": 100},
+            "min_public_gib": {"description": "Minimum public share size in GiB (0 = disabled):", "type": "int", "minimum": 0},
+            "size_ratio_ban": {"description": "Ban users who fail the public size ratio check?", "type": "bool"},
+            "size_ratio_pm": {"description": "Send message to users who fail the public size ratio check?", "type": "bool"},
+            "size_ratio_message": {"type": "string"},
+        }
+
+        self.probed_users = {}
         self.lock = threading.Lock()
 
     def loaded_notification(self):
@@ -81,32 +104,31 @@ class Plugin(BasePlugin):
                  f"{self.settings['min_public_gib']} GiB of public data.")
         self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!")
 
-    # ==================== NEW: THIS IS WHAT MAKES IT FIRE ====================
+    # ==================== THIS IS THE PART THAT WAS MISSING ====================
     def upload_queued_notification(self, user, virtual_path, real_path):
         """Fires the moment someone queues a download from you."""
         now = time.time()
-        cooldown = 30  # seconds – prevent spamming the same user
+        cooldown = 30  # prevent spamming the same user
 
         with self.lock:
             if now - self.probed_users.get(user, 0) < cooldown:
                 return
             self.probed_users[user] = now
-            self.core.userbrowse.request_user_shares(user)   # ← this forces the rich stats
+            self.core.userbrowse.request_user_shares(user)
 
-        # Start timeout timer in case the user never replies (spoofer)
+        # Timeout protection for spoofers
         threading.Thread(target=self._check_timeout, args=(user, now), daemon=True).start()
 
     def _check_timeout(self, user, request_time):
-        time.sleep(25)  # wait up to 25 seconds for stats
+        time.sleep(25)
         with self.lock:
             if user not in self.probed_users or self.probed_users[user] != request_time:
                 return
             self.probed_users.pop(user, None)
 
-        self.log(f"TIMEOUT: No stats received from {user} → cancelling uploads")
+        self.log(f"TIMEOUT: No stats from {user} → cancelling uploads")
         self._cancel_all_uploads_from_user(user)
 
-    # ==================== EXISTING CODE (unchanged) ====================
     def user_stats_notification(self, user, stats):
         if stats.get('source') != 'peer':
             return
@@ -114,7 +136,7 @@ class Plugin(BasePlugin):
         with self.lock:
             if user not in self.probed_users:
                 return
-            del self.probed_users[user]   # stats arrived → cancel timeout
+            del self.probed_users[user]
 
         username = stats['username']
         files = stats.get('files', 0)
@@ -151,10 +173,68 @@ class Plugin(BasePlugin):
 
         self._run_legacy_checks(username, files, dirs, private_dirs, total_bytes, public_bytes, public_percent)
 
-    # ... the rest of your methods stay 100% unchanged (_run_legacy_checks, _handle_no_share, _handle_leech, _send_message, _convert_size_to_bytes) ...
+    def _run_legacy_checks(self, user, files, dirs, private_dirs, total_bytes, public_bytes, public_percent):
+        if files == 0:
+            if self.settings["no_files_ban"]:
+                self._handle_leech(user, self.settings["no_files_message"], "no_files")
+            elif self.settings["no_files_pm"]:
+                self._send_message(user, self.settings["no_files_message"])
+            return
+
+        if files == 0 and dirs > 0 and self.settings["empty_folders_ban"]:
+            self._handle_leech(user, self.settings["empty_folders_message"], "empty_folders")
+            return
+
+        if dirs > 0 and private_dirs == dirs and self.settings["all_privates_ban"]:
+            self._handle_leech(user, self.settings["all_privates_message"], "all_private")
+            return
+
+        if files < self.settings["num_files"] and self.settings["num_files_ban"]:
+            self._handle_leech(user, self.settings["num_files_message"], "num_files")
+            return
+
+        if dirs < self.settings["num_folders"] and self.settings["num_folders_ban"]:
+            self._handle_leech(user, self.settings["num_folders_message"], "num_folders")
+            return
+
+        required_bytes = self._convert_size_to_bytes(self.settings["share_size"], self.settings["share_size_unit"])
+        if total_bytes < required_bytes and self.settings["share_size_ban"]:
+            self._handle_leech(user, self.settings["share_size_message"], "share_size")
+            return
+
+        self.log(f"✓ {user} passed all checks (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
+
+    def _handle_no_share(self, user):
+        if self.settings["no_files_ban"]:
+            self._handle_leech(user, self.settings["no_files_message"], "no_files")
+        elif self.settings["no_files_pm"]:
+            self._send_message(user, self.settings["no_files_message"])
+
+    def _handle_leech(self, user, message, reason):
+        if self.settings.get(f"{reason}_ban", False):
+            self.core.network_filter.ban_user(user)
+            self.log(f"ACTION: Banned {user} (reason: {reason})")
+
+        if self.settings.get(f"{reason}_pm", False) or self.settings["open_private_chat"]:
+            self._send_message(user, message)
+
+    def _send_message(self, user, message):
+        if not message:
+            return
+        full_msg = AUTO_MESSAGE_PREFIX + message
+        self.core.privatechat.send_message(user, full_msg)
+        if self.settings["open_private_chat"]:
+            self.core.privatechat.show_user(user)
+        self.log(f"→ Message sent to {user}: {message}")
+
+    def _convert_size_to_bytes(self, value, unit):
+        if unit == "MB":
+            return value * (1024 ** 2)
+        elif unit == "GB":
+            return value * (1024 ** 3)
+        return 0
 
     def _cancel_all_uploads_from_user(self, user):
-        """Helper to cancel uploads on timeout (optional but useful)."""
         try:
             for transfer in list(getattr(self.core.transfers, 'uploads', [])):
                 if getattr(transfer, 'user', None) == user:
