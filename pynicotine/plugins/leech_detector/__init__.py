@@ -19,6 +19,9 @@ class Plugin(BasePlugin):
 
         self.settings = {
             "open_private_chat": False,
+            "auto_open_browse": True,
+            "keep_browse_open": True,
+            "browse_delay_seconds": 2.0,
 
             # Essential checks
             "no_files_ban": True,
@@ -49,7 +52,7 @@ class Plugin(BasePlugin):
             "share_size_pm": False,
             "share_size_message": "You are not sharing enough media",
 
-            # Primary modern checks (size-based)
+            # Primary modern check
             "min_public_percent": 80,
             "min_public_gib": 50,
             "size_ratio_ban": True,
@@ -59,6 +62,9 @@ class Plugin(BasePlugin):
 
         self.metasettings = {
             "open_private_chat": {"description": "Open private chat tabs when sending messages?", "type": "bool"},
+            "auto_open_browse": {"description": "Automatically open the user's Browse window when they queue?", "type": "bool"},
+            "keep_browse_open": {"description": "Keep the browse window open and focused", "type": "bool"},
+            "browse_delay_seconds": {"description": "Delay (seconds) before opening browse window:", "type": "float", "minimum": 0.5, "maximum": 5.0},
 
             "no_files_ban": {"description": "Ban users with 0 files/folders shared?", "type": "bool"},
             "no_files_pm": {"description": "Send message to users with 0 shares?", "type": "bool"},
@@ -99,16 +105,14 @@ class Plugin(BasePlugin):
         self.lock = threading.Lock()
 
     def loaded_notification(self):
-        self.log("Leech Detector loaded – now fires on every upload_queued_notification.")
-        self.log(f"→ Requires at least {self.settings['min_public_percent']}% public + "
-                 f"{self.settings['min_public_gib']} GiB of public data.")
+        self.log("=== Leech Detector loaded ===")
+        self.log(f"Primary check: ≥ {self.settings['min_public_percent']}% public + {self.settings['min_public_gib']} GiB")
+        self.log(f"Auto-open browse: {'ON' if self.settings['auto_open_browse'] else 'OFF'} | Keep open: {'ON' if self.settings['keep_browse_open'] else 'OFF'}")
         self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!")
 
-    # ==================== THIS IS THE PART THAT WAS MISSING ====================
     def upload_queued_notification(self, user, virtual_path, real_path):
-        """Fires the moment someone queues a download from you."""
         now = time.time()
-        cooldown = 30  # prevent spamming the same user
+        cooldown = 30
 
         with self.lock:
             if now - self.probed_users.get(user, 0) < cooldown:
@@ -116,8 +120,23 @@ class Plugin(BasePlugin):
             self.probed_users[user] = now
             self.core.userbrowse.request_user_shares(user)
 
-        # Timeout protection for spoofers
+        if self.settings.get("auto_open_browse", True):
+            delay = self.settings.get("browse_delay_seconds", 2.0)
+            threading.Timer(delay, self._open_browse_window, args=(user,)).start()
+
         threading.Thread(target=self._check_timeout, args=(user, now), daemon=True).start()
+
+    def _open_browse_window(self, user):
+        try:
+            self.core.userbrowse.browse_user(user)
+            self.log(f"📂 BROWSE OPENED → {user}")
+            if self.settings.get("keep_browse_open", True):
+                try:
+                    self.core.userbrowse.show_user(user)
+                except:
+                    pass
+        except Exception as e:
+            self.log(f"⚠️  Failed to open browse window for {user}: {e}")
 
     def _check_timeout(self, user, request_time):
         time.sleep(25)
@@ -126,7 +145,7 @@ class Plugin(BasePlugin):
                 return
             self.probed_users.pop(user, None)
 
-        self.log(f"TIMEOUT: No stats from {user} → cancelling uploads")
+        self.log(f"⏰ TIMEOUT → No stats from {user} → cancelling uploads")
         self._cancel_all_uploads_from_user(user)
 
     def user_stats_notification(self, user, stats):
@@ -142,8 +161,8 @@ class Plugin(BasePlugin):
         files = stats.get('files', 0)
         dirs = stats.get('dirs', 0)
         private_dirs = stats.get('private_dirs', 0)
-        total_bytes = stats.get('shared_size', 0)
-        private_bytes = stats.get('private_shared_size', 0)
+        total_bytes = stats.get('shared_size', 0) or 0
+        private_bytes = stats.get('private_shared_size', 0) or 0
         public_bytes = total_bytes - private_bytes
 
         if total_bytes == 0:
@@ -152,11 +171,9 @@ class Plugin(BasePlugin):
 
         public_percent = (public_bytes / total_bytes * 100) if total_bytes > 0 else 0.0
 
-        self.log(f"[STATS] {username} shares {files:,} files, {dirs:,} folders ({private_dirs:,} private). "
-                 f"Public: {human_size(public_bytes)} ({public_percent:.1f}%) | "
-                 f"Locked: {human_size(private_bytes)}")
+        self.log(f"[STATS] {username} | {files:,} files, {dirs:,} folders ({private_dirs:,} private) | "
+                 f"Public: {human_size(public_bytes)} ({public_percent:.1f}%) | Locked: {human_size(private_bytes)}")
 
-        # Primary size-based check
         min_pub_pct = self.settings.get("min_public_percent", 80)
         min_pub_gib = self.settings.get("min_public_gib", 50)
         min_pub_bytes = min_pub_gib * GB_IN_BYTES
@@ -202,7 +219,7 @@ class Plugin(BasePlugin):
             self._handle_leech(user, self.settings["share_size_message"], "share_size")
             return
 
-        self.log(f"✓ {user} passed all checks (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
+        self.log(f"✅ PASSED → {user} (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
 
     def _handle_no_share(self, user):
         if self.settings["no_files_ban"]:
@@ -213,7 +230,7 @@ class Plugin(BasePlugin):
     def _handle_leech(self, user, message, reason):
         if self.settings.get(f"{reason}_ban", False):
             self.core.network_filter.ban_user(user)
-            self.log(f"ACTION: Banned {user} (reason: {reason})")
+            self.log(f"⛔ BAN → {user} (reason: {reason})")
 
         if self.settings.get(f"{reason}_pm", False) or self.settings["open_private_chat"]:
             self._send_message(user, message)
@@ -225,7 +242,7 @@ class Plugin(BasePlugin):
         self.core.privatechat.send_message(user, full_msg)
         if self.settings["open_private_chat"]:
             self.core.privatechat.show_user(user)
-        self.log(f"→ Message sent to {user}: {message}")
+        self.log(f"💬 MESSAGE SENT → {user}: {message}")
 
     def _convert_size_to_bytes(self, value, unit):
         if unit == "MB":
@@ -236,11 +253,15 @@ class Plugin(BasePlugin):
 
     def _cancel_all_uploads_from_user(self, user):
         try:
+            cancelled = 0
             for transfer in list(getattr(self.core.transfers, 'uploads', [])):
                 if getattr(transfer, 'user', None) == user:
                     try:
                         self.core.transfers.abort_upload(transfer.user, transfer.virtual_path)
                     except:
                         self.core.transfers.cancel_transfer(transfer)
+                    cancelled += 1
+            if cancelled:
+                self.log(f"🚫 CANCELLED → {cancelled} upload(s) from {user}")
         except Exception as e:
-            self.log(f"Error cancelling uploads for {user}: {e}")
+            self.log(f"⚠️  Error cancelling uploads for {user}: {e}")
