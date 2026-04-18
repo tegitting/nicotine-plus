@@ -5,6 +5,7 @@
 
 from pynicotine.pluginsystem import BasePlugin
 from pynicotine.utils import human_size
+from gi.repository import GLib
 import time
 import threading
 
@@ -23,7 +24,6 @@ class Plugin(BasePlugin):
             "keep_browse_open": True,
             "browse_delay_seconds": 2.0,
 
-            # Essential checks
             "no_files_ban": True,
             "no_files_pm": True,
             "no_files_message": "You need shared files to download from me",
@@ -52,7 +52,6 @@ class Plugin(BasePlugin):
             "share_size_pm": False,
             "share_size_message": "You are not sharing enough media",
 
-            # Primary modern check
             "min_public_percent": 80,
             "min_public_gib": 50,
             "size_ratio_ban": True,
@@ -106,7 +105,7 @@ class Plugin(BasePlugin):
 
     def loaded_notification(self):
         self.log("=== Leech Detector loaded ===")
-        self.log(f"Primary check: ≥ {self.settings['min_public_percent']}% public + {self.settings['min_public_gib']} GiB")
+        self.log(f"Primary check: >= {self.settings['min_public_percent']}% public + {self.settings['min_public_gib']} GiB")
         self.log(f"Auto-open browse: {'ON' if self.settings['auto_open_browse'] else 'OFF'} | Keep open: {'ON' if self.settings['keep_browse_open'] else 'OFF'}")
         self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!")
 
@@ -122,21 +121,23 @@ class Plugin(BasePlugin):
 
         if self.settings.get("auto_open_browse", True):
             delay = self.settings.get("browse_delay_seconds", 2.0)
-            threading.Timer(delay, self._open_browse_window, args=(user,)).start()
+            GLib.timeout_add_seconds(int(delay), self._open_browse_window, user)
 
         threading.Thread(target=self._check_timeout, args=(user, now), daemon=True).start()
 
     def _open_browse_window(self, user):
+        """This now runs on the main GTK thread."""
         try:
             self.core.userbrowse.browse_user(user)
-            self.log(f"📂 BROWSE OPENED → {user}")
+            self.log(f"BROWSE OPENED -> {user}")
             if self.settings.get("keep_browse_open", True):
                 try:
                     self.core.userbrowse.show_user(user)
                 except:
                     pass
         except Exception as e:
-            self.log(f"⚠️  Failed to open browse window for {user}: {e}")
+            self.log(f"WARNING: Failed to open browse window for {user}: {e}")
+        return False  # GLib one-shot
 
     def _check_timeout(self, user, request_time):
         time.sleep(25)
@@ -145,7 +146,7 @@ class Plugin(BasePlugin):
                 return
             self.probed_users.pop(user, None)
 
-        self.log(f"⏰ TIMEOUT → No stats from {user} → cancelling uploads")
+        self.log(f"TIMEOUT -> No stats from {user} -> cancelling uploads")
         self._cancel_all_uploads_from_user(user)
 
     def user_stats_notification(self, user, stats):
@@ -219,7 +220,7 @@ class Plugin(BasePlugin):
             self._handle_leech(user, self.settings["share_size_message"], "share_size")
             return
 
-        self.log(f"✅ PASSED → {user} (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
+        self.log(f"PASSED -> {user} (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
 
     def _handle_no_share(self, user):
         if self.settings["no_files_ban"]:
@@ -230,7 +231,7 @@ class Plugin(BasePlugin):
     def _handle_leech(self, user, message, reason):
         if self.settings.get(f"{reason}_ban", False):
             self.core.network_filter.ban_user(user)
-            self.log(f"⛔ BAN → {user} (reason: {reason})")
+            self.log(f"BAN -> {user} (reason: {reason})")
 
         if self.settings.get(f"{reason}_pm", False) or self.settings["open_private_chat"]:
             self._send_message(user, message)
@@ -242,7 +243,7 @@ class Plugin(BasePlugin):
         self.core.privatechat.send_message(user, full_msg)
         if self.settings["open_private_chat"]:
             self.core.privatechat.show_user(user)
-        self.log(f"💬 MESSAGE SENT → {user}: {message}")
+        self.log(f"MESSAGE SENT -> {user}: {message}")
 
     def _convert_size_to_bytes(self, value, unit):
         if unit == "MB":
@@ -262,6 +263,6 @@ class Plugin(BasePlugin):
                         self.core.transfers.cancel_transfer(transfer)
                     cancelled += 1
             if cancelled:
-                self.log(f"🚫 CANCELLED → {cancelled} upload(s) from {user}")
+                self.log(f"CANCELLED -> {cancelled} upload(s) from {user}")
         except Exception as e:
-            self.log(f"⚠️  Error cancelling uploads for {user}: {e}")
+            self.log(f"ERROR: Failed to cancel uploads for {user}: {e}")
