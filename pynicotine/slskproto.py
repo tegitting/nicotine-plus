@@ -338,7 +338,7 @@ class NetworkThread(Thread):
     MAX_INCOMING_MESSAGE_SIZE_LARGE = 469762048  # 448 MiB, to leave headroom for large shares
     MAX_INCOMING_MESSAGE_SIZE_MEDIUM = 16777216  # 16 MiB
     MAX_INCOMING_MESSAGE_SIZE_SMALL = 16384      # 16 KiB
-    TCP_BUFFER_SIZE_MEDIUM = 262144              # 256 KiB
+    TCP_BUFFER_SIZE_MEDIUM = 208896              # 204 KiB, maximum limit NetBSD accepts by default
     TCP_BUFFER_SIZE_SMALL = 16384                # 16 KiB
     ALLOWED_PEER_CONN_TYPES = {
         ConnectionType.PEER,
@@ -662,7 +662,7 @@ class NetworkThread(Thread):
                                 allowed_responses=None):
 
         try:
-            msg = msg_class()
+            msg = msg_class(msg_content=msg_content)
 
             if sock is not None:
                 msg.sock = sock
@@ -676,12 +676,15 @@ class NetworkThread(Thread):
             if allowed_responses is not None:
                 msg.allowed_responses = allowed_responses
 
-            msg.parse_network_message(msg_content)
+            msg.parse_network_message()
             return msg
 
         except Exception as error:
             log.add_debug("Unable to parse %s message type %s, size %s, contents %s. Error: %s",
                           (conn_type, msg_class, msg_size, msg_content, error))
+
+        finally:
+            msg.finish_parsing()
 
         return None
 
@@ -806,7 +809,8 @@ class NetworkThread(Thread):
                     # Ask the server for a new address.
                     addr = None
 
-                elif (time.monotonic() - user_address.last_update) > self.USER_ADDRESS_TTL:
+                elif (username != self._server_username
+                        and (time.monotonic() - user_address.last_update) > self.USER_ADDRESS_TTL):
                     # Certain clients may prefer sending a listening port update to the server without
                     # reconnecting. Make sure we request the user's port again every now and then.
                     log.add_conn("User %s's address expired, requesting new one", username)

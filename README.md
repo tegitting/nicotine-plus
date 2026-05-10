@@ -30,9 +30,12 @@ See the [release notes](NEWS.md).
 
 Downloads are available for:
 
- - [GNU/Linux, *BSD, Haiku and illumos](doc/DOWNLOADS.md#gnulinux-bsd-haiku-solaris)
+ - [GNU/Linux, *BSD, Haiku and illumos](doc/DOWNLOADS.md#gnulinux-bsd-haiku-illumos)
  - [Windows](doc/DOWNLOADS.md#windows)
  - [macOS](doc/DOWNLOADS.md#macos)
+
+For interested testers, please help test the 3.3.11 release candidate. See
+[TESTING.md](doc/TESTING.md) for download links.
 
 
 ## Get Involved

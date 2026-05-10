@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2021-2025 Nicotine+ Contributors
+# SPDX-FileCopyrightText: 2021-2026 Nicotine+ Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import glob
 import os
 import platform
-import ssl
 import subprocess
 import sys
 import tempfile
+
+from typing import Callable
+from typing import TypeVar
 
 from cx_Freeze import Executable, setup     # pylint: disable=import-error
 from cx_Freeze.hooks import _gi_ as gi      # pylint: disable=import-private-name
 
 # pylint: disable=duplicate-code
+
+_T = TypeVar("_T")
 
 
 class DummyHook:
@@ -27,18 +31,24 @@ if sys.platform == "win32":
     SYS_BASE_PATH = sys.prefix
     LIB_PATH = os.path.join(SYS_BASE_PATH, "bin")
     UNAVAILABLE_MODULES = [
-        "fcntl", "grp", "nis", "ossaudiodev", "posix", "pwd", "readline", "resource", "spwd", "syslog", "termios"
+        "fcntl", "grp", "posix", "pwd", "readline", "resource", "syslog", "termios"
     ]
+    ZIP_INCLUDE_PACKAGES = ["*"]
     ICON_NAME = "icon.ico"
 
 elif sys.platform == "darwin":
-    SYS_BASE_PATH = "/opt/homebrew" if platform.machine() == "arm64" else "/usr/local"
+    SYS_BASE_PATH = sys.prefix
     LIB_PATH = os.path.join(SYS_BASE_PATH, "lib")
-    UNAVAILABLE_MODULES = ["msvcrt", "nt", "nturl2path", "ossaudiodev", "spwd", "winreg", "winsound"]
+    UNAVAILABLE_MODULES = ["msvcrt", "nt", "nturl2path", "winreg", "winsound"]
+    ZIP_INCLUDE_PACKAGES = ["*"]
     ICON_NAME = "icon.icns"
 
 else:
-    raise RuntimeError("Only Windows and macOS are supported")
+    SYS_BASE_PATH = sys.prefix
+    LIB_PATH = os.path.join(SYS_BASE_PATH, "lib")
+    UNAVAILABLE_MODULES = ["msvcrt", "nt", "nturl2path", "winreg", "winsound"]
+    ZIP_INCLUDE_PACKAGES = []
+    ICON_NAME = "icon.svg"
 
 TEMP_PATH = tempfile.mkdtemp()
 CURRENT_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -57,18 +67,22 @@ MANIFEST_NAME = os.path.join(CURRENT_PATH, f"{SCRIPT_NAME}.manifest") if sys.pla
 # Include (almost) all standard library modules for plugins
 EXCLUDED_MODULES = UNAVAILABLE_MODULES + [
     f"{MODULE_NAME}.plugins.examplars", f"{MODULE_NAME}.tests",
-    "ctypes.test", "distutils", "ensurepip", "idlelib", "lib2to3", "msilib", "pip", "pydoc", "pydoc_data",
-    "pygtkcompat", "tkinter", "turtle", "turtledemo", "unittest.test", "venv", "zoneinfo"
+    "ctypes.test", "ensurepip", "idlelib", "pip", "pydoc", "pydoc_data",
+    "tkinter", "turtle", "turtledemo", "unittest.test", "venv", "zoneinfo"
 ]
 INCLUDED_MODULES = [MODULE_NAME, "gi"] + list(
     # pylint: disable=no-member
     {module for module in sys.stdlib_module_names if not module.startswith("_")}.difference(EXCLUDED_MODULES)
 )
 
-include_files = []
+include_files: list[tuple[str, str]] = []
 
 
-def process_files(folder_path, callback, callback_data=None, starts_with=None, ends_with=None, recursive=False):
+def process_files(
+    folder_path: str, callback: Callable[[str, str, _T], None], callback_data: _T = None,
+    starts_with: tuple[str, ...] | str | None = None, ends_with: tuple[str, ...] | str | None = None,
+    recursive: bool = False
+) -> None:
 
     for full_path in glob.glob(os.path.join(folder_path, "**"), recursive=recursive):
         short_path = os.path.relpath(full_path, folder_path)
@@ -82,15 +96,19 @@ def process_files(folder_path, callback, callback_data=None, starts_with=None, e
         callback(full_path, short_path, callback_data)
 
 
-def add_file(file_path, output_path):
+def add_file(file_path: str, output_path: str) -> None:
     include_files.append((file_path, output_path))
 
 
-def _add_files_callback(full_path, short_path, output_path):
+def _add_files_callback(full_path: str, short_path: str, output_path: str) -> None:
     add_file(full_path, os.path.join(output_path, short_path))
 
 
-def add_files(folder_path, output_path, starts_with=None, ends_with=None, recursive=False):
+def add_files(
+    folder_path: str, output_path: str,
+    starts_with: str | tuple[str, ...] | None = None,
+    ends_with: str | None = None, recursive: bool = False
+) -> None:
 
     process_files(
         folder_path, _add_files_callback, callback_data=output_path,
@@ -98,22 +116,31 @@ def add_files(folder_path, output_path, starts_with=None, ends_with=None, recurs
     )
 
 
-def add_pixbuf_loaders():
+def add_pixbuf_loaders() -> None:
 
     pixbuf_loaders_path = os.path.join(SYS_BASE_PATH, "lib/gdk-pixbuf-2.0/2.10.0/loaders")
     loader_extension = "dll" if sys.platform == "win32" else "so"
+    image_formats = ["bmp", "gif"]
 
-    add_file(file_path=os.path.join(CURRENT_PATH, "pixbuf-loaders.cache"), output_path="lib/pixbuf-loaders.cache")
+    if sys.platform == "win32":
+        image_formats += ["webp"]
 
-    for image_format in ("bmp", "gif", "webp"):
+    for image_format in image_formats:
         basename = f"libpixbufloader-{image_format}"
+        output_name = f"libpixbufloader-{image_format}.{loader_extension}"
+
+        if sys.platform in {"darwin", "win32"}:
+            output_path = os.path.join("lib", output_name)
+        else:
+            output_path = os.path.join("lib", "gi", output_name)
+
         add_file(
             file_path=os.path.realpath(os.path.join(pixbuf_loaders_path, f"{basename}.{loader_extension}")),
-            output_path=f"lib/libpixbufloader-{image_format}.{loader_extension}"
+            output_path=output_path
         )
 
 
-def _add_typelibs_callback(full_path, short_path, _callback_data=None):
+def _add_typelibs_callback(full_path: str, short_path: str, _callback_data: None = None) -> None:
 
     from xml.etree import ElementTree
 
@@ -129,10 +156,25 @@ def _add_typelibs_callback(full_path, short_path, _callback_data=None):
         xml = ElementTree.fromstring(real_file_handle.read())
 
         for namespace in xml.findall(".//{*}namespace[@shared-library]"):
-            paths = []
+            paths: list[str] = []
 
             for path in namespace.attrib["shared-library"].split(","):
-                updated_path = os.path.join("@loader_path", os.path.basename(path))
+                basename = os.path.basename(path)
+
+                if sys.platform == "darwin":
+                    updated_path = os.path.join("@executable_path", "lib", basename)
+                    add_file(file_path=os.path.join(LIB_PATH, basename), output_path=os.path.join("lib", basename))
+
+                elif sys.platform == "win32":
+                    updated_path = path
+                    add_file(file_path=os.path.join(LIB_PATH, basename), output_path=os.path.join("lib", basename))
+
+                else:
+                    updated_path = path
+                    add_file(
+                        file_path=os.path.join(LIB_PATH, basename), output_path=os.path.join("lib", "gi", basename)
+                    )
+
                 paths.append(updated_path)
 
             namespace.attrib["shared-library"] = ",".join(paths)
@@ -143,7 +185,7 @@ def _add_typelibs_callback(full_path, short_path, _callback_data=None):
     subprocess.check_call(["g-ir-compiler", f"--output={temp_file_typelib}", temp_file_gir])
 
 
-def add_typelibs():
+def add_typelibs() -> None:
 
     required_typelibs = [
         "Adw-",
@@ -164,50 +206,35 @@ def add_typelibs():
     ]
 
     if sys.platform == "win32":
-        required_typelibs.append("GdkWin32-4")
-        required_typelibs.append("win32-")
+        required_typelibs += [
+            "GdkWin32-4",
+            "GioWin32-",
+            "GLibWin32-",
+            "win32-"
+        ]
+    else:
+        required_typelibs.append("GioUnix-")
 
     required_typelibs = tuple(required_typelibs)
-    folder_path = os.path.join(SYS_BASE_PATH, "lib/girepository-1.0")
 
-    if sys.platform == "darwin":
-        # Remove absolute paths added by Homebrew (macOS)
-        process_files(
-            folder_path=os.path.join(SYS_BASE_PATH, "share/gir-1.0"),
-            callback=_add_typelibs_callback, starts_with=required_typelibs, ends_with=".gir"
-        )
-        folder_path = TEMP_PATH
-
+    process_files(
+        folder_path=os.path.join(SYS_BASE_PATH, "share/gir-1.0"),
+        callback=_add_typelibs_callback, starts_with=required_typelibs, ends_with=".gir"
+    )
     add_files(
-        folder_path=folder_path, output_path="lib/typelibs",
+        folder_path=TEMP_PATH, output_path="lib/typelibs",
         starts_with=required_typelibs, ends_with=".typelib"
     )
 
 
-def add_gtk():
+def add_gtk() -> None:
 
-    # Libraries
+    # Typelibs
+    add_typelibs()
+
+    # gdbus required for single-instance application (Windows)
     if sys.platform == "win32":
-        add_file(
-            file_path=os.path.join(LIB_PATH, "libgtk-4-1.dll"),
-            output_path="lib/libgtk-4-1.dll"
-        )
-        add_file(
-            file_path=os.path.join(LIB_PATH, "libadwaita-1-0.dll"),
-            output_path="lib/libadwaita-1-0.dll"
-        )
-        # gdbus required for single-instance application (Windows)
         add_file(file_path=os.path.join(LIB_PATH, "gdbus.exe"), output_path="lib/gdbus.exe")
-
-    elif sys.platform == "darwin":
-        add_file(
-            file_path=os.path.join(LIB_PATH, "libgtk-4.1.dylib"),
-            output_path="lib/libgtk-4.1.dylib"
-        )
-        add_file(
-            file_path=os.path.join(LIB_PATH, "libadwaita-1.0.dylib"),
-            output_path="lib/libadwaita-1.0.dylib"
-        )
 
     # Schemas
     add_file(
@@ -218,16 +245,23 @@ def add_gtk():
     # Pixbuf loaders
     add_pixbuf_loaders()
 
-    # Typelibs
-    add_typelibs()
+    if sys.platform in {"darwin", "win32"}:
+        return
+
+    # Fontconfig
+    add_files(
+        folder_path=os.path.join(SYS_BASE_PATH, "etc/fonts"), output_path="share/fonts",
+        ends_with=".conf", recursive=True
+    )
+
+    # xkb
+    add_files(
+        folder_path=os.path.join(SYS_BASE_PATH, "share/X11/xkb"), output_path="share/xkb",
+        recursive=True
+    )
 
 
-def add_ssl_certs():
-    ssl_paths = ssl.get_default_verify_paths()
-    add_file(file_path=ssl_paths.openssl_cafile, output_path="lib/cert.pem")
-
-
-def add_translations():
+def add_translations() -> None:
 
     from setup import build_translations  # noqa: E402  # pylint: disable=import-self,no-name-in-module
     build_translations()
@@ -240,9 +274,6 @@ def add_translations():
 
 # GTK
 add_gtk()
-
-# SSL
-add_ssl_certs()
 
 # Translations
 add_translations()
@@ -262,7 +293,7 @@ setup(
             "packages": INCLUDED_MODULES,
             "excludes": EXCLUDED_MODULES,
             "include_files": include_files,
-            "zip_include_packages": ["*"],
+            "zip_include_packages": ZIP_INCLUDE_PACKAGES,
             "zip_exclude_packages": [MODULE_NAME],
             "optimize": 2
         },
@@ -298,7 +329,11 @@ setup(
         "bdist_dmg": {
             "volume_label": FULL_NAME,
             "applications_shortcut": True
-        }
+        },
+        "bdist_appimage": {
+            "target_name": FULL_NAME + ".AppImage",
+            "dist_dir": BUILD_PATH
+        },
     },
     data_files=[],
     packages=[],
@@ -312,6 +347,14 @@ setup(
             copyright=pynicotine.__copyright__,
             shortcut_name=pynicotine.__application_name__,
             shortcut_dir="ProgramMenuFolder"
+        ),
+        # Separate "console" executable required for CI startup test and debugging
+        Executable(
+            script=os.path.join(PROJECT_PATH, SCRIPT_NAME),
+            base="console",
+            target_name=f"{pynicotine.__application_name__}-debug",
+            manifest=MANIFEST_NAME,
+            copyright=pynicotine.__copyright__
         )
     ],
 )
