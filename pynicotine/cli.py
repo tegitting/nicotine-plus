@@ -78,7 +78,7 @@ class CLIInputProcessor(Thread):
         input_func = getpass if self.prompt_silent else input
         self.has_custom_prompt = (callback is not None)
 
-        user_input = input_func(self.prompt_message)
+        user_input = input_func(f"\r{self.prompt_message}")
 
         self.has_custom_prompt = False
         self.prompt_message = ""
@@ -140,6 +140,10 @@ class CLI:
     def prompt(self, message, callback, is_silent=False):
 
         if not self._has_tty:
+            return
+
+        if "\n" in message:
+            self._print_log_message("CLI prompt failed (message cannot be multiple lines)")
             return
 
         self._input_processor.prompt_message = message

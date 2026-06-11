@@ -72,6 +72,8 @@ class NetworkPage:
             self.check_port_status_label,
             self.container,
             self.current_port_label,
+            self.listen_port_description_label,
+            self.listen_port_label,
             self.listen_port_spinner,
             self.network_interface_label,
             self.password_row_revealer,
@@ -177,6 +179,13 @@ class NetworkPage:
 
         server_hostname, server_port = config.sections["server"]["server"]
         self.soulseek_server_entry.set_text(f"{server_hostname}:{server_port}")
+
+        if core.cli_listen_port is not None:
+            self.listen_port_label.set_label(str(core.cli_listen_port))
+            self.listen_port_label.set_visible(True)
+            self.listen_port_description_label.set_mnemonic_widget(self.listen_port_label)
+        else:
+            self.listen_port_description_label.set_mnemonic_widget(self.listen_port_spinner)
 
         listen_port, _unused_port = config.sections["server"]["portrange"]
         self.listen_port_spinner.set_value(listen_port)
@@ -3430,7 +3439,9 @@ class PluginsPage:
             ("#" + _("_Settings"), self.on_show_plugin_settings),
             ("", None),
             ("=" + _("Open in File _Manager"), self.on_open_file_manager),
-            ("=" + _("_Uninstall…"), self.on_uninstall_plugin)
+            ("", None),
+            ("#" + _("Reset Settings…"), self.on_reset_plugin_settings),
+            ("=" + _("Uninstall…"), self.on_uninstall_plugin)
         )
 
     def destroy(self):
@@ -3490,7 +3501,7 @@ class PluginsPage:
         menu.actions[_("Open in File _Manager")].set_enabled(
             not self.application.isolated_mode and not is_internal_plugin
         )
-        menu.actions[_("_Uninstall…")].set_enabled(not is_internal_plugin)
+        menu.actions[_("Uninstall…")].set_enabled(not is_internal_plugin)
 
     def on_select_plugin(self, list_view, iterator):
 
@@ -3516,7 +3527,7 @@ class PluginsPage:
 
         if iterator is not None and not core.pluginhandler.is_internal_plugin(self.selected_plugin):
             self.info_bar.show_warning_message(
-                _("This is not a built-in plugin. Use at your own risk.")
+                _("This is a third-party plugin. Safety is not guaranteed. Use at your own risk.")
             )
         else:
             self.info_bar.set_visible(False)
@@ -3581,6 +3592,26 @@ class PluginsPage:
             callback=self.on_install_plugin_selected
         ).present()
 
+    def on_reset_plugin_settings_response(self, _dialog, _response_id, selected_plugin):
+        core.pluginhandler.reset_plugin_settings(selected_plugin)
+
+    def on_reset_plugin_settings(self, *_args):
+
+        plugin_human_name = core.pluginhandler.get_plugin_human_name(self.selected_plugin)
+
+        OptionDialog(
+            application=self.application,
+            title=_("Reset Plugin Settings?"),
+            message=_("Do you really want to restore the default settings for plugin %s?") % plugin_human_name,
+            buttons=[
+                ("cancel", _("_Cancel")),
+                ("ok", _("Reset"))
+            ],
+            destructive_response_id="ok",
+            callback=self.on_reset_plugin_settings_response,
+            callback_data=self.selected_plugin
+        ).present()
+
     def on_uninstall_plugin_response(self, _dialog, _response_id, selected_plugin):
         core.pluginhandler.uninstall_plugin(selected_plugin)
         self.set_settings()
@@ -3590,17 +3621,13 @@ class PluginsPage:
         if core.pluginhandler.is_internal_plugin(self.selected_plugin):
             return
 
-        try:
-            info = core.pluginhandler.get_plugin_info(self.selected_plugin)
-            human_plugin_name = info.get("Name", self.selected_plugin)
-        except OSError:
-            human_plugin_name = self.selected_plugin
+        plugin_human_name = core.pluginhandler.get_plugin_human_name(self.selected_plugin)
 
         OptionDialog(
             application=self.application,
             title=_("Uninstall Plugin?"),
             message=_("Do you really want to uninstall plugin %s? "
-                      "This will remove any files the plugin has stored.") % human_plugin_name,
+                      "This will remove any files the plugin has stored.") % plugin_human_name,
             buttons=[
                 ("cancel", _("_Cancel")),
                 ("ok", _("Uninstall"))
