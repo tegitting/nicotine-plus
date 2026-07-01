@@ -1,5 +1,5 @@
 <!--
-  SPDX-FileCopyrightText: 2020-2025 Nicotine+ Contributors
+  SPDX-FileCopyrightText: 2020-2026 Nicotine+ Contributors
   SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
@@ -8,6 +8,8 @@
 This document contains important information about Nicotine+ design decisions
 and development procedures for maintainers, developers and code contributors
 alike.
+
+Every participant must follow the rules in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 
 ## Sections

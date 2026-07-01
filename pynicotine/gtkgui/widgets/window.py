@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022-2025 Nicotine+ Contributors
+# SPDX-FileCopyrightText: 2022-2026 Nicotine+ Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
@@ -172,6 +172,14 @@ class Window:
 
     def unmaximize(self):
         self.widget.unmaximize()
+
+    def minimize(self):
+
+        if GTK_API_VERSION >= 4:
+            self.widget.minimize()
+            return
+
+        self.widget.iconify()
 
     def present(self):
 
