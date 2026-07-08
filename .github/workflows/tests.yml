@@ -10,7 +10,7 @@ env:
 
 jobs:
   python:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -168,7 +168,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -206,7 +206,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -239,7 +239,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -265,7 +265,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -297,7 +297,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -330,7 +330,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -345,21 +345,25 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pkgman install -y harfbuzz_glib gettext gtk4 build_python310 pygobject_python310 \
-            setuptools_python310 wheel_python310
+          # Retry due to occasional error: "Failed to download package x: Interrupted system call"
+          for i in 1 2 3; do
+            pkgman install -y harfbuzz_glib gettext gtk4 build_python314 pygobject_python314 \
+              setuptools_python314 wheel_python314 && break
+            status=$?; [ "$i" -eq 3 ] && exit "$status"
+          done
 
       - name: Integration and unit tests
-        run: python3.10 -m unittest -v
+        run: python3.14 -m unittest -v
 
       - name: Build without isolation
-        run: python3.10 -m build --no-isolation
+        run: python3.14 -m build --no-isolation
 
   illumos:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
-        shell: cpa.sh {0}
+        shell: cpa.sh {0} --environment-variables NICOTINE_NETWORK_TESTS
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

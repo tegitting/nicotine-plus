@@ -76,9 +76,9 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            platform: ubuntu-latest
+            platform: ubuntu-26.04
           - arch: aarch64
-            platform: ubuntu-24.04-arm
+            platform: ubuntu-26.04-arm
     runs-on: ${{ matrix.platform }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
@@ -121,9 +121,9 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            platform: ubuntu-latest
+            platform: ubuntu-26.04
           - arch: arm64
-            platform: ubuntu-24.04-arm
+            platform: ubuntu-26.04-arm
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout code
@@ -390,7 +390,7 @@ jobs:
         run: cd dist && unzip checksums.zip
 
       - name: Attest
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: dist/
 
