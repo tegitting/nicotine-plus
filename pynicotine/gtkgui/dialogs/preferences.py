@@ -309,7 +309,6 @@ class DownloadsPage:
             self.enable_username_subfolders_toggle,
             self.file_finished_command_entry,
             self.filter_list_container,
-            self.filter_status_label,
             self.folder_finished_command_entry,
             self.incomplete_folder_default_button,
             self.incomplete_folder_label,
@@ -383,11 +382,18 @@ class DownloadsPage:
                     "expand_column": True,
                     "default_sort_type": "ascending"
                 },
+                "validity": {
+                    "column_type": "icon",
+                    "title": _("Validity"),
+                    "width": 20,
+                    "hide_header": True,
+                    "tooltip_callback": self.on_filter_validity_tooltip
+                },
                 "regex": {
                     "column_type": "toggle",
                     "title": _("Regex"),
                     "width": 0,
-                    "toggle_callback": self.on_toggle_regex
+                    "toggle_callback": self.on_toggle_filter_regex
                 }
             }
         )
@@ -451,8 +457,10 @@ class DownloadsPage:
 
             dfilter, escaped = item
             enable_regex = not escaped
+            error = self.validate_filter(dfilter, enable_regex)
+            icon_name = "dialog-warning-symbolic" if error else ""
 
-            self.filter_list_view.add_row([dfilter, enable_regex], select_row=False)
+            self.filter_list_view.add_row([dfilter, icon_name, enable_regex], select_row=False)
 
         self.filter_list_view.unfreeze()
 
@@ -502,26 +510,52 @@ class DownloadsPage:
     def on_default_received_folder(self, *_args):
         self.received_folder_button.set_path(config.defaults["transfers"]["uploaddir"])
 
-    def on_toggle_regex(self, list_view, iterator):
+    def validate_filter(self, dfilter, enable_regex):
 
-        value = list_view.get_row_value(iterator, "regex")
-        list_view.set_row_value(iterator, "regex", not value)
+        if not enable_regex:
+            return None
 
-        self.on_verify_filter()
+        try:
+            re.compile("(" + dfilter + ")")
+
+        except re.error as error:
+            return error
+
+        return None
+
+    def on_filter_validity_tooltip(self, list_view, iterator):
+
+        dfilter = list_view.get_row_value(iterator, "filter")
+        enable_regex = list_view.get_row_value(iterator, "regex")
+        error = self.validate_filter(dfilter, enable_regex)
+        tooltip_text = _("Invalid Regular Expression: %s") % error
+
+        return tooltip_text
+
+    def on_toggle_filter_regex(self, list_view, iterator):
+
+        dfilter = list_view.get_row_value(iterator, "filter")
+        enable_regex = not list_view.get_row_value(iterator, "regex")
+        error = self.validate_filter(dfilter, enable_regex)
+        icon_name = "dialog-warning-symbolic" if error else ""
+
+        list_view.set_row_value(iterator, "validity", icon_name)
+        list_view.set_row_value(iterator, "regex", enable_regex)
 
     def on_add_filter_response(self, dialog, _response_id, _data):
 
         dfilter = dialog.get_entry_value().strip()
         enable_regex = dialog.get_option_value()
+        error = self.validate_filter(dfilter, enable_regex)
+        icon_name = "dialog-warning-symbolic" if error else ""
 
         iterator = self.filter_list_view.iterators.get(dfilter)
 
         if iterator is not None:
+            self.filter_list_view.set_row_value(iterator, "validity", icon_name)
             self.filter_list_view.set_row_value(iterator, "regex", enable_regex)
         else:
-            self.filter_list_view.add_row([dfilter, enable_regex])
-
-        self.on_verify_filter()
+            self.filter_list_view.add_row([dfilter, icon_name, enable_regex])
 
     def on_add_filter(self, *_args):
 
@@ -540,14 +574,14 @@ class DownloadsPage:
 
         new_dfilter = dialog.get_entry_value().strip()
         enable_regex = dialog.get_option_value()
+        error = self.validate_filter(new_dfilter, enable_regex)
+        icon_name = "dialog-warning-symbolic" if error else ""
 
         dfilter = self.filter_list_view.get_row_value(iterator, "filter")
         orig_iterator = self.filter_list_view.iterators[dfilter]
 
         self.filter_list_view.remove_row(orig_iterator)
-        self.filter_list_view.add_row([new_dfilter, enable_regex])
-
-        self.on_verify_filter()
+        self.filter_list_view.add_row([new_dfilter, icon_name, enable_regex])
 
     def on_edit_filter(self, *_args):
 
@@ -576,68 +610,19 @@ class DownloadsPage:
 
             self.filter_list_view.remove_row(orig_iterator)
 
-        self.on_verify_filter()
-
     def on_default_filters(self, *_args):
 
         self.filter_list_view.clear()
         self.filter_list_view.freeze()
 
-        for download_filter, escaped in config.defaults["transfers"]["downloadfilters"]:
+        for dfilter, escaped in config.defaults["transfers"]["downloadfilters"]:
             enable_regex = not escaped
-            self.filter_list_view.add_row([download_filter, enable_regex], select_row=False)
+            error = self.validate_filter(dfilter, enable_regex)
+            icon_name = "dialog-warning-symbolic" if error else ""
+
+            self.filter_list_view.add_row([dfilter, icon_name, enable_regex], select_row=False)
 
         self.filter_list_view.unfreeze()
-        self.on_verify_filter()
-
-    def on_verify_filter(self, *_args):
-
-        failed = {}
-        outfilter = "(\\\\("
-
-        for dfilter, iterator in self.filter_list_view.iterators.items():
-            dfilter = self.filter_list_view.get_row_value(iterator, "filter")
-            enable_regex = self.filter_list_view.get_row_value(iterator, "regex")
-
-            if not enable_regex:
-                dfilter = re.escape(dfilter)
-                dfilter = dfilter.replace("\\*", ".*")
-
-            try:
-                re.compile("(" + dfilter + ")")
-                outfilter += dfilter
-
-                if dfilter != list(self.filter_list_view.iterators)[-1]:
-                    outfilter += "|"
-
-            except re.error as error:
-                failed[dfilter] = error
-
-        outfilter += ")$)"
-
-        try:
-            re.compile(outfilter)
-
-        except re.error as error:
-            failed[outfilter] = error
-
-        if failed:
-            errors = ""
-
-            for dfilter, error in failed.items():
-                errors += "Filter: %(filter)s Error: %(error)s " % {
-                    "filter": dfilter,
-                    "error": error
-                }
-
-            error = _("%(num)d Failed! %(error)s ") % {
-                "num": len(failed),
-                "error": errors
-            }
-
-            self.filter_status_label.set_text(error)
-        else:
-            self.filter_status_label.set_text(_("Filters Successful"))
 
 
 class SharesPage:
@@ -2852,7 +2837,7 @@ class SearchesPage:
             self.max_displayed_results_spinner,
             self.max_sent_results_spinner,
             self.min_search_term_length_spinner,
-            self.repond_search_requests_toggle,
+            self.respond_search_requests_toggle,
             self.show_private_results_toggle
         ) = self.widgets = ui.load(scope=self, path="settings/search.ui")
 
@@ -2866,7 +2851,7 @@ class SearchesPage:
                 "maxresults": self.max_sent_results_spinner,
                 "enablefilters": self.enable_default_filters_toggle,
                 "defilter": None,
-                "search_results": self.repond_search_requests_toggle,
+                "search_results": self.respond_search_requests_toggle,
                 "max_displayed_results": self.max_displayed_results_spinner,
                 "min_search_chars": self.min_search_term_length_spinner,
                 "enable_history": self.enable_search_history_toggle,
@@ -2933,7 +2918,7 @@ class SearchesPage:
                     self.filter_length_entry.get_text().strip(),
                     self.filter_public_files_toggle.get_active(),
                 ],
-                "search_results": self.repond_search_requests_toggle.get_active(),
+                "search_results": self.respond_search_requests_toggle.get_active(),
                 "max_displayed_results": self.max_displayed_results_spinner.get_value_as_int(),
                 "min_search_chars": self.min_search_term_length_spinner.get_value_as_int(),
                 "enable_history": self.enable_search_history_toggle.get_active(),

@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2020-2026 Nicotine+ Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import time
+
 import pynicotine
 from pynicotine.config import config
 from pynicotine.core import core
@@ -17,16 +19,18 @@ from pynicotine.utils import replace_text
 
 
 class PrivateChat:
-    __slots__ = ("completions", "private_message_queue", "away_message_users", "users")
+    __slots__ = ("completions", "users", "_away_message_users", "_private_message_queue",
+                 "_ctcp_query_times")
 
     SERVER_USERNAME = "server"
 
     def __init__(self):
 
         self.completions = set()
-        self.private_message_queue = {}
-        self.away_message_users = set()
         self.users = set()
+        self._away_message_users = set()
+        self._private_message_queue = {}
+        self._ctcp_query_times = {}
 
         for event_name, callback in (
             ("message-user", self._message_user),
@@ -66,8 +70,10 @@ class PrivateChat:
 
     def _server_disconnect(self, _msg):
 
-        self.private_message_queue.clear()
-        self.away_message_users.clear()
+        self._away_message_users.clear()
+        self._private_message_queue.clear()
+        self._ctcp_query_times.clear()
+
         self.update_completions()
 
     def add_user(self, username):
@@ -102,16 +108,6 @@ class PrivateChat:
     def clear_private_messages(self, username):
         events.emit("clear-private-messages", username)
 
-    def private_message_queue_add(self, msg):
-        """Queue a private message until we've received a user's IP address."""
-
-        username = msg.user
-
-        if username not in self.private_message_queue:
-            self.private_message_queue[username] = [msg]
-        else:
-            self.private_message_queue[username].append(msg)
-
     def send_automatic_message(self, username, message):
         self.send_message(username, f"[Automatic Message] {message}")
 
@@ -125,8 +121,9 @@ class PrivateChat:
             return
 
         username, message = user_text
+        is_ctcp_query = message.startswith("\x01") and message.endswith("\x01")
 
-        if config.sections["words"]["replacewords"] and not message.startswith("\x01"):
+        if config.sections["words"]["replacewords"] and not is_ctcp_query:
             message = replace_text(message, config.sections["words"]["autoreplaced"])
 
         # Server rejects messages containing newlines, filter them
@@ -153,6 +150,37 @@ class PrivateChat:
         if users:
             core.send_message_to_server(MessageUsers(users, message))
 
+    def _private_message_queue_add(self, msg):
+        """Queue a private message until we've received a user's IP address."""
+
+        username = msg.user
+
+        if username not in self._private_message_queue:
+            self._private_message_queue[username] = [msg]
+        else:
+            self._private_message_queue[username].append(msg)
+
+    def _process_ctcp_query(self, username, query):
+
+        if config.sections["server"]["ctcpmsgs"]:
+            return
+
+        request_time = time.monotonic()
+
+        if username in self._ctcp_query_times and request_time < self._ctcp_query_times[username] + 1:
+            # Ignoring request, because it's less than a second since the last
+            # one by this user
+            return
+
+        self._ctcp_query_times[username] = request_time
+
+        if query == "VERSION":
+            reply = f"{query}: {pynicotine.__application_name__} {pynicotine.__version__}"
+        else:
+            reply = f"ERRMSG {query}: Unknown query, available CTCP keywords are VERSION"
+
+        self.send_message(username, reply)
+
     def _get_peer_address(self, msg):
         """Server code 3.
 
@@ -162,11 +190,11 @@ class PrivateChat:
 
         username = msg.user
 
-        if username not in self.private_message_queue:
+        if username not in self._private_message_queue:
             return
 
-        for queued_msg in self.private_message_queue[username][:]:
-            self.private_message_queue[username].remove(queued_msg)
+        for queued_msg in self._private_message_queue[username][:]:
+            self._private_message_queue[username].remove(queued_msg)
             queued_msg.user = username
             events.emit("message-user", queued_msg, queued_message=True)
 
@@ -175,10 +203,10 @@ class PrivateChat:
 
         if msg.user == core.users.login_username and msg.status != UserStatus.AWAY:
             # Reset list of users we've sent away messages to when the away session ends
-            self.away_message_users.clear()
+            self._away_message_users.clear()
 
         if msg.status == UserStatus.OFFLINE:
-            self.private_message_queue.pop(msg.user, None)
+            self._private_message_queue.pop(msg.user, None)
 
     def get_message_type(self, text, is_outgoing_message):
 
@@ -260,10 +288,10 @@ class PrivateChat:
 
                 elif not queued_message:
                     # Ask for user's IP address and queue the private message until we receive the address
-                    if username not in self.private_message_queue:
+                    if username not in self._private_message_queue:
                         core.users.request_ip_address(username)
 
-                    self.private_message_queue_add(msg)
+                    self._private_message_queue_add(msg)
                     msg.user = None
                     return
 
@@ -279,12 +307,13 @@ class PrivateChat:
 
         msg.message_type = self.get_message_type(message, is_outgoing_message)
         is_action_message = (msg.message_type == "action")
+        is_ctcp_query = message.startswith("\x01") and message.endswith("\x01")
         ctcp_query = ""
 
         if msg.message_type != "local":
             msg.mention_type, msg.mention_keyword = self.get_mention_type(message)
 
-        if message.startswith("\x01") and message.endswith("\x01"):
+        if is_ctcp_query:
             ctcp_query = msg.message[1:-1].strip()
             msg.message = message = f"CTCP {ctcp_query}"
 
@@ -310,24 +339,20 @@ class PrivateChat:
 
         core.pluginhandler.incoming_private_chat_notification(username, msg.message)
 
-        if ctcp_query and not config.sections["server"]["ctcpmsgs"]:
-            if ctcp_query == "VERSION":
-                ctcp_reply = f"{ctcp_query}: {pynicotine.__application_name__} {pynicotine.__version__}"
-            else:
-                ctcp_reply = f"ERRMSG {ctcp_query}: Unknown query, available CTCP keywords are VERSION"
-
-            self.send_message(username, ctcp_reply)
-
         if not msg.is_new_message:
-            # Message was sent while offline, don't auto-reply
+            # Message was sent while offline, don't process CTCP queries or auto-reply
+            return
+
+        if ctcp_query:
+            self._process_ctcp_query(username, ctcp_query)
             return
 
         autoreply = config.sections["server"]["autoreply"]
 
         if (autoreply and core.users.login_status == UserStatus.AWAY
-                and username not in self.away_message_users):
+                and username not in self._away_message_users):
             self.send_automatic_message(username, autoreply)
-            self.away_message_users.add(username)
+            self._away_message_users.add(username)
 
     def update_completions(self):
 
