@@ -563,13 +563,14 @@ class Scanner:
                 # Sharing a folder twice, no go
                 continue
 
-            if self.folder_filter_regex and self.folder_filter_regex.search(f"\\{virtual_folder_path}\\") is not None:
+            # Skip root folder when applying filters
+            if (self.folder_filter_regex and folder_path != shared_folder_path
+                    and self.folder_filter_regex.search(f"\\{virtual_folder_path}\\") is not None):
                 continue
 
             self.writer.send(self.current_folder_count)
 
             file_list = []
-            has_filtered_files = False
             virtual_folder_path_lower = virtual_folder_path.lower()
             virtual_folder_words = virtual_folder_path_lower.translate(TRANSLATE_PUNCTUATION).split()
 
@@ -607,7 +608,6 @@ class Scanner:
 
                             if (self.file_filter_regex
                                     and self.file_filter_regex.search("\\" + virtual_file_path) is not None):
-                                has_filtered_files = True
                                 continue
 
                             file_stat = entry.stat()
@@ -653,9 +653,7 @@ class Scanner:
                     )
                 )
 
-            if not has_filtered_files or file_list:
-                self.streams[virtual_folder_path] = self.get_folder_stream(file_list)
-
+            self.streams[virtual_folder_path] = self.get_folder_stream(file_list)
             self.current_folder_count += 1
 
     def get_audio_tag(self, file_path, size):

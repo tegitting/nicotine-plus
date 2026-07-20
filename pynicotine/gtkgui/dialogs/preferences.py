@@ -545,6 +545,10 @@ class DownloadsPage:
     def on_add_filter_response(self, dialog, _response_id, _data):
 
         dfilter = dialog.get_entry_value().strip()
+
+        if not dfilter:
+            return
+
         enable_regex = dialog.get_option_value()
         error = self.validate_filter(dfilter, enable_regex)
         icon_name = "dialog-warning-symbolic" if error else ""
@@ -573,6 +577,10 @@ class DownloadsPage:
     def on_edit_filter_response(self, dialog, _response_id, iterator):
 
         new_dfilter = dialog.get_entry_value().strip()
+
+        if not new_dfilter:
+            return
+
         enable_regex = dialog.get_option_value()
         error = self.validate_filter(new_dfilter, enable_regex)
         icon_name = "dialog-warning-symbolic" if error else ""
@@ -3403,7 +3411,9 @@ class PluginsPage:
                     "title": _("Enabled"),
                     "width": 0,
                     "toggle_callback": self.on_toggle_plugin,
-                    "hide_header": True
+                    "inconsistent_column": "inconsistent_data",
+                    "hide_header": True,
+                    "tooltip_callback": self.on_failed_tooltip
                 },
                 "human_name": {
                     "column_type": "text",
@@ -3412,7 +3422,8 @@ class PluginsPage:
                 },
 
                 # Hidden data columns
-                "name_data": {"data_type": GObject.TYPE_STRING, "iterator_key": True}
+                "name_data": {"data_type": GObject.TYPE_STRING, "iterator_key": True},
+                "inconsistent_data": {"data_type": GObject.TYPE_BOOLEAN},
             }
         )
 
@@ -3447,6 +3458,8 @@ class PluginsPage:
 
         self.application.preferences.set_widgets_data(self.options)
 
+        plugins_active = self.enable_plugins_toggle.get_active()
+
         for plugin_name in core.pluginhandler.list_installed_plugins():
             try:
                 info = core.pluginhandler.get_plugin_info(plugin_name)
@@ -3455,7 +3468,9 @@ class PluginsPage:
 
             plugin_human_name = info.get("Name", plugin_name)
             enabled = (plugin_name in config.sections["plugins"]["enabled"])
-            self.plugin_list_view.add_row([enabled, plugin_human_name, plugin_name], select_row=False)
+            failed = (plugins_active and enabled and plugin_name not in core.pluginhandler.enabled_plugins)
+
+            self.plugin_list_view.add_row([enabled, plugin_human_name, plugin_name, failed], select_row=False)
 
         self.plugin_list_view.unfreeze()
 
@@ -3469,6 +3484,10 @@ class PluginsPage:
 
     def check_plugin_settings_button(self, plugin_name):
         self.plugin_settings_button.set_sensitive(bool(core.pluginhandler.get_plugin_metasettings(plugin_name)))
+
+    def on_failed_tooltip(self, treeview, iterator):
+        failed = treeview.get_row_value(iterator, "inconsistent_data")
+        return _("Failed") if failed else ""
 
     def on_plugin_popup_menu(self, menu, _widget):
 
@@ -3521,9 +3540,13 @@ class PluginsPage:
     def on_toggle_plugin(self, list_view, iterator):
 
         plugin_name = list_view.get_row_value(iterator, "name_data")
+        was_loaded = (plugin_name in core.pluginhandler.enabled_plugins)
         enabled = core.pluginhandler.toggle_plugin(plugin_name)
+        failed = (not was_loaded and not enabled)
 
         list_view.set_row_value(iterator, "enabled", enabled)
+        list_view.set_row_value(iterator, "inconsistent_data", failed)
+
         self.check_plugin_settings_button(plugin_name)
 
     def on_toggle_selected_plugin(self, *_args):
@@ -3611,7 +3634,7 @@ class PluginsPage:
             application=self.application,
             title=_("Uninstall Plugin?"),
             message=_("Do you really want to uninstall plugin %s? "
-                      "This will remove any files the plugin has stored.") % plugin_human_name,
+                      "This will delete all settings and data stored by the plugin.") % plugin_human_name,
             buttons=[
                 ("cancel", _("_Cancel")),
                 ("ok", _("Uninstall"))
