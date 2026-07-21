@@ -3,11 +3,22 @@
 # GNU GENERAL PUBLIC LICENSE Version 3
 #
 
-from pynicotine.pluginsystem import BasePlugin
-from pynicotine.utils import human_size
-from gi.repository import GLib
+#
+# Leech Detector Plugin for Nicotine+
+# GNU GENERAL PUBLIC LICENSE Version 3
+#
+
 import time
 import threading
+
+# Guard PyGObject imports so linters/CI environments don't fail builds
+try:
+    from gi.repository import GLib
+except ImportError:
+    GLib = None
+
+from pynicotine.pluginsystem import BasePlugin
+from pynicotine.utils import human_size
 
 GB_IN_BYTES = 1024 ** 3
 AUTO_MESSAGE_PREFIX = "[Auto-Message] "
@@ -121,23 +132,24 @@ class Plugin(BasePlugin):
 
         if self.settings.get("auto_open_browse", True):
             delay = self.settings.get("browse_delay_seconds", 2.0)
-            GLib.timeout_add_seconds(int(delay), self._open_browse_window, user)
+            if GLib is not None:
+                GLib.timeout_add_seconds(int(delay), self._open_browse_window, user)
 
         threading.Thread(target=self._check_timeout, args=(user, now), daemon=True).start()
 
     def _open_browse_window(self, user):
-        """This now runs on the main GTK thread."""
+        """Runs on the main thread."""
         try:
             self.core.userbrowse.browse_user(user)
             self.log(f"BROWSE OPENED -> {user}")
             if self.settings.get("keep_browse_open", True):
                 try:
                     self.core.userbrowse.show_user(user)
-                except:
+                except Exception:
                     pass
         except Exception as e:
             self.log(f"WARNING: Failed to open browse window for {user}: {e}")
-        return False  # GLib one-shot
+        return False
 
     def _check_timeout(self, user, request_time):
         time.sleep(25)
@@ -158,13 +170,13 @@ class Plugin(BasePlugin):
                 return
             del self.probed_users[user]
 
-        username = stats['username']
+        username = stats.get('username', user)
         files = stats.get('files', 0)
         dirs = stats.get('dirs', 0)
         private_dirs = stats.get('private_dirs', 0)
         total_bytes = stats.get('shared_size', 0) or 0
         private_bytes = stats.get('private_shared_size', 0) or 0
-        public_bytes = total_bytes - private_bytes
+        public_bytes = max(0, total_bytes - private_bytes)
 
         if total_bytes == 0:
             self._handle_no_share(username)
@@ -193,75 +205,84 @@ class Plugin(BasePlugin):
 
     def _run_legacy_checks(self, user, files, dirs, private_dirs, total_bytes, public_bytes, public_percent):
         if files == 0:
-            if self.settings["no_files_ban"]:
-                self._handle_leech(user, self.settings["no_files_message"], "no_files")
-            elif self.settings["no_files_pm"]:
-                self._send_message(user, self.settings["no_files_message"])
+            if self.settings.get("no_files_ban"):
+                self._handle_leech(user, self.settings.get("no_files_message"), "no_files")
+            elif self.settings.get("no_files_pm"):
+                self._send_message(user, self.settings.get("no_files_message"))
             return
 
-        if files == 0 and dirs > 0 and self.settings["empty_folders_ban"]:
-            self._handle_leech(user, self.settings["empty_folders_message"], "empty_folders")
+        if files == 0 and dirs > 0 and self.settings.get("empty_folders_ban"):
+            self._handle_leech(user, self.settings.get("empty_folders_message"), "empty_folders")
             return
 
-        if dirs > 0 and private_dirs == dirs and self.settings["all_privates_ban"]:
-            self._handle_leech(user, self.settings["all_privates_message"], "all_private")
+        if dirs > 0 and private_dirs == dirs and self.settings.get("all_privates_ban"):
+            self._handle_leech(user, self.settings.get("all_privates_message"), "all_privates")
             return
 
-        if files < self.settings["num_files"] and self.settings["num_files_ban"]:
-            self._handle_leech(user, self.settings["num_files_message"], "num_files")
+        if files < self.settings.get("num_files", 0) and self.settings.get("num_files_ban"):
+            self._handle_leech(user, self.settings.get("num_files_message"), "num_files")
             return
 
-        if dirs < self.settings["num_folders"] and self.settings["num_folders_ban"]:
-            self._handle_leech(user, self.settings["num_folders_message"], "num_folders")
+        if dirs < self.settings.get("num_folders", 0) and self.settings.get("num_folders_ban"):
+            self._handle_leech(user, self.settings.get("num_folders_message"), "num_folders")
             return
 
-        required_bytes = self._convert_size_to_bytes(self.settings["share_size"], self.settings["share_size_unit"])
-        if total_bytes < required_bytes and self.settings["share_size_ban"]:
-            self._handle_leech(user, self.settings["share_size_message"], "share_size")
+        required_bytes = self._convert_size_to_bytes(self.settings.get("share_size", 0), self.settings.get("share_size_unit", "GB"))
+        if total_bytes < required_bytes and self.settings.get("share_size_ban"):
+            self._handle_leech(user, self.settings.get("share_size_message"), "share_size")
             return
 
         self.log(f"PASSED -> {user} (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
 
     def _handle_no_share(self, user):
-        if self.settings["no_files_ban"]:
-            self._handle_leech(user, self.settings["no_files_message"], "no_files")
-        elif self.settings["no_files_pm"]:
-            self._send_message(user, self.settings["no_files_message"])
+        if self.settings.get("no_files_ban"):
+            self._handle_leech(user, self.settings.get("no_files_message"), "no_files")
+        elif self.settings.get("no_files_pm"):
+            self._send_message(user, self.settings.get("no_files_message"))
 
     def _handle_leech(self, user, message, reason):
         if self.settings.get(f"{reason}_ban", False):
-            self.core.network_filter.ban_user(user)
+            if hasattr(self.core, 'network_filter'):
+                self.core.network_filter.ban_user(user)
             self.log(f"BAN -> {user} (reason: {reason})")
 
-        if self.settings.get(f"{reason}_pm", False) or self.settings["open_private_chat"]:
+        if self.settings.get(f"{reason}_pm", False) or self.settings.get("open_private_chat"):
             self._send_message(user, message)
 
     def _send_message(self, user, message):
         if not message:
             return
         full_msg = AUTO_MESSAGE_PREFIX + message
-        self.core.privatechat.send_message(user, full_msg)
-        if self.settings["open_private_chat"]:
-            self.core.privatechat.show_user(user)
+        if hasattr(self.core, 'privatechat'):
+            self.core.privatechat.send_message(user, full_msg)
+            if self.settings.get("open_private_chat"):
+                self.core.privatechat.show_user(user)
         self.log(f"MESSAGE SENT -> {user}: {message}")
 
     def _convert_size_to_bytes(self, value, unit):
+        try:
+            val = float(value)
+        except (ValueError, TypeError):
+            val = 0.0
+
         if unit == "MB":
-            return value * (1024 ** 2)
+            return int(val * (1024 ** 2))
         elif unit == "GB":
-            return value * (1024 ** 3)
+            return int(val * (1024 ** 3))
         return 0
 
     def _cancel_all_uploads_from_user(self, user):
         try:
             cancelled = 0
-            for transfer in list(getattr(self.core.transfers, 'uploads', [])):
-                if getattr(transfer, 'user', None) == user:
-                    try:
-                        self.core.transfers.abort_upload(transfer.user, transfer.virtual_path)
-                    except:
-                        self.core.transfers.cancel_transfer(transfer)
-                    cancelled += 1
+            transfers = getattr(self.core, 'transfers', None)
+            if transfers and hasattr(transfers, 'uploads'):
+                for transfer in list(transfers.uploads):
+                    if getattr(transfer, 'user', None) == user:
+                        if hasattr(transfers, 'cancel_upload'):
+                            transfers.cancel_upload(user, getattr(transfer, 'virtual_path', ''))
+                        elif hasattr(transfers, 'cancel_transfer'):
+                            transfers.cancel_transfer(transfer)
+                        cancelled += 1
             if cancelled:
                 self.log(f"CANCELLED -> {cancelled} upload(s) from {user}")
         except Exception as e:
