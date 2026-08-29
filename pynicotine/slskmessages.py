@@ -5,7 +5,6 @@
 # SPDX-FileCopyrightText: 2001-2003 Alexander Kanavin
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-import time
 import zlib
 
 try:
@@ -122,7 +121,7 @@ class FileAttribute:
     BITRATE = 0
     LENGTH = 1
     VBR = 2
-    ENCODER = 3
+    ENCODER = 3  # Obsolete
     SAMPLE_RATE = 4
     BIT_DEPTH = 5
 
@@ -645,12 +644,17 @@ class Login(ServerMessage):
     """Server code 1.
 
     We send this to the server right after the connection has been
-    established. Server responds with the greeting message.
+    established. Server responds with the greeting message or a rejection.
+
+    There is no mechanism to reset a forgotten password, so account credentials
+    should be validated and must be remembered locally. It is unacceptable to
+    use randomly generated usernames, as such automated scripting is disallowed
+    by the official server rules (https://www.slsknet.org/news/node/681).
 
     The server uses the major and minor versions to differentiate between
     clients. Numbers are chosen that avoid impersonating clients with reserved
     major versions. Downstream projects have their own rules for minor
-    versions. Experimental scripts may use major version `177` and any minor
+    versions. Experimental clients may use major version `177` and any minor
     version number they choose for each project.
     """
 
@@ -3161,17 +3165,18 @@ class PeerInit(PeerInitMessage):
     verification.
     """
 
-    __slots__ = ("sock", "init_user", "target_user", "conn_type", "indirect_token", "created_time", "outgoing_msgs")
+    __slots__ = ("sock", "init_user", "target_user", "conn_type", "target_username_size",
+                 "indirect_token", "indirect_request_time", "outgoing_msgs")
 
-    def __init__(self, sock=None, init_user=None, target_user=None, conn_type=None, indirect_token=None,
-                 *, msg_content=None):
+    def __init__(self, sock=None, init_user=None, target_user=None, conn_type=None, *, msg_content=None):
         PeerInitMessage.__init__(self, msg_content)
         self.sock = sock
-        self.init_user = init_user      # our own username
-        self.target_user = target_user  # username of peer we're connected to
+        self.init_user = init_user        # our own username
+        self.target_user = target_user    # username of peer we're connected to
         self.conn_type = conn_type
-        self.indirect_token = indirect_token
-        self.created_time = time.monotonic()
+        self.target_username_size = None  # in bytes
+        self.indirect_token = None
+        self.indirect_request_time = None
         self.outgoing_msgs = []
 
     def make_network_message(self):
@@ -3184,6 +3189,7 @@ class PeerInit(PeerInitMessage):
 
     def parse_network_message(self):
         self.target_user = self.unpack_string()
+        self.target_username_size = self._offset - 4
         self.conn_type = self.unpack_string()
 
 

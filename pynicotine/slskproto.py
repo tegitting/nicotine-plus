@@ -14,7 +14,6 @@ import sys
 import time
 
 from collections import defaultdict
-from os import strerror
 from queue import Empty, SimpleQueue
 from threading import Thread
 
@@ -49,6 +48,7 @@ from pynicotine.slskmessages import EmitNetworkMessageEvents
 from pynicotine.slskmessages import FileOffset
 from pynicotine.slskmessages import FileSearchResponse
 from pynicotine.slskmessages import FileTransferInit
+from pynicotine.slskmessages import FolderContentsResponse
 from pynicotine.slskmessages import GetPeerAddress
 from pynicotine.slskmessages import GetUserStats
 from pynicotine.slskmessages import GetUserStatus
@@ -124,6 +124,14 @@ class UserAddress:
     def __init__(self, addr):
         self.addr = addr
         self.last_update = time.monotonic()
+
+
+class ConnectionInitTimeoutError(Exception):
+    pass
+
+
+class ConnectionInitClosedError(Exception):
+    pass
 
 
 class NetworkInterfaces:
@@ -330,24 +338,25 @@ class NetworkThread(Thread):
     data.
     """
 
-    IN_PROGRESS_STALE_AFTER = 2
+    CONNECTION_INIT_TIMEOUT = 2
     INDIRECT_REQUEST_TIMEOUT = 20
     CONNECTION_MAX_IDLE = 60
     CONNECTION_MAX_IDLE_GHOST = 10
     USER_ADDRESS_TTL = 1800                      # 30 minutes
     CONNECTION_BACKLOG_LENGTH = 65535            # OS limit can be lower
-    MAX_INCOMING_MESSAGE_SIZE_LARGE = 469762048  # 448 MiB, to leave headroom for large shares
-    MAX_INCOMING_MESSAGE_SIZE_MEDIUM = 16777216  # 16 MiB
-    MAX_INCOMING_MESSAGE_SIZE_SMALL = 16384      # 16 KiB
+    MAX_INCOMING_MESSAGE_SIZE_448M = 469762048   # 448 MiB, to leave headroom for large shares
+    MAX_INCOMING_MESSAGE_SIZE_16M = 16777216     # 16 MiB
+    MAX_INCOMING_MESSAGE_SIZE_1M = 1048576       # 1 MiB
+    MAX_INCOMING_MESSAGE_SIZE_16K = 16384        # 16 KiB
     TCP_BUFFER_SIZE_MEDIUM = 208896              # 204 KiB, maximum limit NetBSD accepts by default
     TCP_BUFFER_SIZE_SMALL = 16384                # 16 KiB
+    MAX_ACCEPTED_USERNAME_SIZE = 256             # 256 bytes, for future flexibility beyond the actual 30 byte limit
+    SERVER_USERNAME = "server"
     ALLOWED_PEER_CONN_TYPES = {
         ConnectionType.PEER,
         ConnectionType.FILE,
         ConnectionType.DISTRIBUTED
     }
-    ERROR_NOT_CONNECTED = OSError(errno.ENOTCONN, strerror(errno.ENOTCONN))
-    ERROR_TIMED_OUT = OSError(errno.ETIMEDOUT, strerror(errno.ETIMEDOUT))
 
     # Looping max ~240 times per second (SLEEP_MIN_IDLE) on high activity
     # ~20 (SLEEP_MAX_IDLE + SLEEP_MIN_IDLE) by default
@@ -402,7 +411,7 @@ class NetworkThread(Thread):
 
         self._server_conn = None
         self._server_address = None
-        self._server_username = None
+        self._login_username = None
         self._server_timeout_time = None
         self._server_timeout_value = -1
         self._manual_server_disconnect = False
@@ -596,7 +605,7 @@ class NetworkThread(Thread):
         # No direct connection was established, give up
         events.emit_main_thread(
             "peer-connection-error", username=username, conn_type=conn_type,
-            msgs=init.outgoing_msgs[:]
+            msgs=init.outgoing_msgs[:], is_offline=False
         )
         init.outgoing_msgs.clear()
         self._username_init_msgs.pop(username + conn_type, None)
@@ -609,7 +618,7 @@ class NetworkThread(Thread):
         timed_out_requests = set()
 
         for indirect_token, init in self._indirect_token_init_msgs.items():
-            if not expire_all and (current_time - init.created_time) < self.INDIRECT_REQUEST_TIMEOUT:
+            if not expire_all and (current_time - init.indirect_request_time) < self.INDIRECT_REQUEST_TIMEOUT:
                 continue
 
             self._indirect_request_error(init)
@@ -627,7 +636,7 @@ class NetworkThread(Thread):
 
         init = conn.init
 
-        if init is not None and (init.conn_type != "P" or init.target_user == self._server_username):
+        if init is not None and (init.conn_type != "P" or init.target_user == self._login_username):
             # Distributed and file connections, as well as connections to ourselves,
             # are critical. Always assume they are active.
             return True
@@ -826,11 +835,7 @@ class NetworkThread(Thread):
     def _initiate_connection_to_peer(self, username, conn_type, msg=None, in_address=None):
         """Prepare to initiate a connection with a peer."""
 
-        indirect_token = self._indirect_token = increment_token(self._indirect_token)
-        init = PeerInit(
-            init_user=self._server_username, target_user=username, conn_type=conn_type,
-            indirect_token=indirect_token
-        )
+        init = PeerInit(init_user=self._login_username, target_user=username, conn_type=conn_type)
         addr = None
 
         if in_address is not None:
@@ -848,7 +853,7 @@ class NetworkThread(Thread):
                     # Ask the server for a new address.
                     addr = None
 
-                elif (username != self._server_username
+                elif (username != self._login_username
                         and (time.monotonic() - user_address.last_update) > self.USER_ADDRESS_TTL):
                     # Certain clients may prefer sending a listening port update to the server without
                     # reconnecting. Make sure we request the user's port again every now and then.
@@ -857,11 +862,6 @@ class NetworkThread(Thread):
 
         if msg is not None:
             init.outgoing_msgs.append(msg)
-
-        self._indirect_token_init_msgs[indirect_token] = init
-        self._send_message_to_server(ConnectToPeer(indirect_token, username, conn_type))
-
-        log.add_conn("Requesting indirect connection to user %s with token %s", (username, indirect_token))
 
         if addr is None:
             self._pending_init_msgs[username].append(init)
@@ -881,8 +881,6 @@ class NetworkThread(Thread):
                          "but existing connection already exists", (conn_type, username, addr))
             return
 
-        log.add_conn("Attempting direct connection of type %s to user %s, address %s",
-                     (conn_type, username, addr))
         self._init_peer_connection(addr, init, pierce_token=pierce_token)
 
     def _connect_error(self, error, conn):
@@ -913,6 +911,21 @@ class NetworkThread(Thread):
         log.add_conn("Direct connection of type %s to user %s failed: %s",
                      (conn_type, username, error))
 
+    def _connect_to_peer_indirect(self, init):
+        """Send a message to the server to ask the peer to connect to us
+        (indirect connection)"""
+
+        username = init.target_user
+        conn_type = init.conn_type
+
+        init.indirect_token = self._indirect_token = increment_token(self._indirect_token)
+        init.indirect_request_time = time.monotonic()
+
+        self._indirect_token_init_msgs[init.indirect_token] = init
+        self._send_message_to_server(ConnectToPeer(init.indirect_token, username, conn_type))
+
+        log.add_conn("Requesting indirect connection to user %s with token %s", (username, init.indirect_token))
+
     def _establish_outgoing_peer_connection(self, conn):
 
         conn.is_established = True
@@ -941,7 +954,7 @@ class NetworkThread(Thread):
         username = init.target_user
         conn_type = init.conn_type
 
-        if username == self._server_username:
+        if username == self._login_username:
             return
 
         prev_init = self._username_init_msgs.pop(username + conn_type, None)
@@ -1082,7 +1095,9 @@ class NetworkThread(Thread):
 
         event_name = "peer-connection-closed" if conn.is_established else "peer-connection-error"
         events.emit_main_thread(
-            event_name, username=username, conn_type=conn_type, msgs=init.outgoing_msgs[:])
+            event_name, username=username, conn_type=conn_type, msgs=init.outgoing_msgs[:],
+            is_offline=(self._server_conn is None)
+        )
 
         del self._username_init_msgs[init_key]
 
@@ -1114,13 +1129,13 @@ class NetworkThread(Thread):
     def _check_connections(self, current_time):
 
         num_sockets = self._num_sockets
+        init_timeout_conns = set()
         inactive_conns = set()
-        stale_conns = set()
 
         for conn in self._conns.values():
             if not conn.is_established:
-                if (current_time - conn.last_active) > self.IN_PROGRESS_STALE_AFTER:
-                    stale_conns.add(conn)
+                if (current_time - conn.last_active) > self.CONNECTION_INIT_TIMEOUT:
+                    init_timeout_conns.add(conn)
 
             elif self._is_connection_inactive(conn, current_time, num_sockets):
                 inactive_conns.add(conn)
@@ -1152,12 +1167,14 @@ class NetworkThread(Thread):
 
             inactive_conns.clear()
 
-        if stale_conns:
-            for conn in stale_conns:
-                self._connect_error(self.ERROR_TIMED_OUT, conn)
+        if init_timeout_conns:
+            conn_error = ConnectionInitTimeoutError(_("Connection attempt timed out"))
+
+            for conn in init_timeout_conns:
+                self._connect_error(conn_error, conn)
                 self._close_connection(conn)
 
-            stale_conns.clear()
+            init_timeout_conns.clear()
 
         if self._pending_peer_conns:
             for init, (addr, pierce_token) in self._pending_peer_conns.copy().items():
@@ -1306,7 +1323,7 @@ class NetworkThread(Thread):
         conn.login = True
 
         self._server_address = conn.addr
-        self._server_username = self._branch_root = login
+        self._login_username = self._branch_root = login
         self._server_timeout_value = -1
 
         self._send_message_to_server(
@@ -1372,7 +1389,7 @@ class NetworkThread(Thread):
         elif msg_class is Login:
             if msg.success:
                 # Ensure listening port is open
-                user_address = self._user_addresses[self._server_username]
+                user_address = self._user_addresses[self._login_username]
                 msg.local_address = user_address.addr
                 local_ip_address, port = msg.local_address
 
@@ -1380,7 +1397,7 @@ class NetworkThread(Thread):
                     self._portmapper.set_port(port, local_ip_address)
                     self._portmapper.add_port_mapping(blocking=True)
 
-                msg.username = self._server_username
+                msg.username = self._login_username
                 msg.server_address = self._server_address
 
                 # Ask for a list of parents to connect to (distributed network)
@@ -1403,7 +1420,7 @@ class NetworkThread(Thread):
                 init = PeerInit(target_user=username, conn_type=conn_type)
                 self._connect_to_peer(username, addr, init, pierce_token=pierce_token)
             else:
-                log.add_conn("Unknown connection type %s", conn_type)
+                log.add_conn("Unknown connection type: %r", conn_type)
 
         elif msg_class is CantConnectToPeer:
             pierce_token = msg.token
@@ -1438,14 +1455,14 @@ class NetworkThread(Thread):
                     self._connect_to_peer(username, addr, init)
 
             # We already store a local IP address for our username
-            if username != self._server_username and username in self._user_addresses:
+            if username != self._login_username and username in self._user_addresses:
                 if user_offline or not msg.port:
                     self._user_addresses[username] = None
                 else:
                     self._user_addresses[username] = UserAddress(addr)
 
         elif msg_class in (WatchUser, GetUserStats):
-            if msg.user == self._server_username:
+            if msg.user == self._login_username:
                 if msg.avgspeed is not None:
                     self._upload_speed = msg.avgspeed
                     log.add_conn("Server reported our upload speed as %s", human_speed(msg.avgspeed))
@@ -1511,9 +1528,9 @@ class NetworkThread(Thread):
         while buffer_len >= msg_content_offset:
             msg_size, msg_type = DOUBLE_UINT32_UNPACK(in_buffer, idx)
 
-            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_LARGE:
+            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_448M:
                 log.add_conn("Received message larger than maximum size %s from server. "
-                             "Closing connection.", self.MAX_INCOMING_MESSAGE_SIZE_LARGE)
+                             "Closing connection.", self.MAX_INCOMING_MESSAGE_SIZE_448M)
                 self._manual_server_disconnect = True
                 self._close_connection(conn)
                 return
@@ -1557,7 +1574,7 @@ class NetworkThread(Thread):
             # a user reconnects and changes their IP address.
             self._user_addresses[msg.user] = None
 
-        elif msg_class is UnwatchUser and msg.user != self._server_username:
+        elif msg_class is UnwatchUser and msg.user != self._login_username:
             self._user_addresses.pop(msg.user, None)
 
         out_buffer = conn.out_buffer
@@ -1628,7 +1645,7 @@ class NetworkThread(Thread):
             self._set_server_timer(use_fixed_timeout=self._manual_server_reconnect)
 
         self._server_address = None
-        self._server_username = None
+        self._login_username = None
 
         events.emit_main_thread(
             "server-disconnect",
@@ -1695,12 +1712,19 @@ class NetworkThread(Thread):
             conn_type = msg.conn_type
             addr = conn.addr
 
-            log.add_conn("Received incoming direct connection of type %s from user "
-                         "%s, address %s", (conn_type, username, addr))
+            if (not 0 < msg.target_username_size <= self.MAX_ACCEPTED_USERNAME_SIZE
+                    or username == self.SERVER_USERNAME or not username.isprintable()):
+                log.add_conn("Rejected incoming direct connection from address %s "
+                             "due to invalid username: %r", (addr, username))
+                return None
 
             if conn_type not in self.ALLOWED_PEER_CONN_TYPES:
-                log.add_conn("Unknown connection type %s", conn_type)
+                log.add_conn("Rejected incoming direct connection from address %s due to "
+                             "unknown connection type: %r", (addr, conn_type))
                 return None
+
+            log.add_conn("Received incoming direct connection of type %s from user "
+                         "%s, address %s", (conn_type, username, addr))
 
             self._set_tcp_buffer_size(conn.sock, conn_type)
 
@@ -1723,9 +1747,9 @@ class NetworkThread(Thread):
         while buffer_len >= msg_content_offset and init is None:
             msg_size, = UINT32_UNPACK(in_buffer, idx)
 
-            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_SMALL:
+            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_16K:
                 log.add_conn("Received message larger than maximum size %s from peer %s. "
-                             "Closing connection.", (self.MAX_INCOMING_MESSAGE_SIZE_SMALL, conn.addr))
+                             "Closing connection.", (self.MAX_INCOMING_MESSAGE_SIZE_16K, conn.addr))
                 break
 
             msg_size_total = msg_size + 4
@@ -1830,10 +1854,26 @@ class NetworkThread(Thread):
         _ip_address, port = addr
         self._pending_peer_conns.pop(init, None)
 
+        if pierce_token is None:
+            # Send an indirect connection request to the user as well. Note that we
+            # deviate from SoulseekQt's behavior intentionally. It sends the indirect
+            # connection request (ConnectToPeer) at the same time as the user address
+            # request (GetPeerAddress) for direct connection. We delay the indirect
+            # connection request until the server tells us the user's address, since
+            # it allows us to accurately tell if the user is offline (due to the
+            # 0.0.0.0 response address). We can emit a more specific peer-connection-error
+            # event with offline status this way, while avoiding a duplicate event for
+            # the more generic CantConnectToPeer error message.
+
+            self._connect_to_peer_indirect(init)
+
         if port <= 0 or port > 65535:
             log.add_conn("Skipping direct connection attempt of type %s to user %s "
                          "due to invalid address %s", (init.conn_type, init.target_user, addr))
             return
+
+        log.add_conn("Attempting direct connection of type %s to user %s, address %s",
+                     (init.conn_type, init.target_user, addr))
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         io_events = selectors.EVENT_READ | selectors.EVENT_WRITE
@@ -1872,14 +1912,20 @@ class NetworkThread(Thread):
         while buffer_len >= msg_content_offset:
             msg_size, msg_type = DOUBLE_UINT32_UNPACK(in_buffer, idx)
             msg_size_total = msg_size + 4
-            max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_MEDIUM
+            max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_1M
             msg_class = None
 
             if msg_type in PEER_MESSAGE_CLASSES:
                 msg_class = PEER_MESSAGE_CLASSES[msg_type]
 
-            if msg_class is SharedFileListResponse or msg_class is UserInfoResponse:
-                max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_LARGE
+            if msg_class is None or msg_class is FileSearchResponse or msg_class is FolderContentsResponse:
+                # Larger limit for unknown messages, since we don't want to close the connection
+                # if larger messages are added in the future.
+                max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_16M
+
+            elif msg_class is SharedFileListResponse or msg_class is UserInfoResponse:
+                # Larger limit since these responses can contain large file lists or user pictures
+                max_msg_size = self.MAX_INCOMING_MESSAGE_SIZE_448M
 
                 if conn.init.target_user not in self._allowed_message_responses[msg_class]:
                     # Since these responses tend to be large, close the connection when receiving
@@ -2191,7 +2237,7 @@ class NetworkThread(Thread):
 
         username = conn.init.target_user
 
-        if username == self._server_username:
+        if username == self._login_username:
             # We can't connect to ourselves
             return
 
@@ -2279,7 +2325,7 @@ class NetworkThread(Thread):
         # an indirect connection
         self._parent = None
         self._branch_level = 0
-        self._branch_root = self._server_username
+        self._branch_root = self._login_username
 
         log.add_conn("We have no parent, requesting a new one")
 
@@ -2497,9 +2543,9 @@ class NetworkThread(Thread):
         while buffer_len >= msg_content_offset:
             msg_size, = UINT32_UNPACK(in_buffer, idx)
 
-            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_SMALL:
+            if msg_size > self.MAX_INCOMING_MESSAGE_SIZE_16K:
                 log.add_conn("Received message larger than maximum size %s from user %s. "
-                             "Closing connection.", (self.MAX_INCOMING_MESSAGE_SIZE_SMALL, conn.init.target_user))
+                             "Closing connection.", (self.MAX_INCOMING_MESSAGE_SIZE_16K, conn.init.target_user))
                 self._close_connection(conn)
                 break
 
@@ -2644,9 +2690,8 @@ class NetworkThread(Thread):
 
         if not conn.is_established:
             if conn_error is None:
-                # No error when connection shuts down gracefully (recv() returns
-                # 0 bytes), but we need to display one anyway. Is this is the best fit?
-                conn_error = self.ERROR_NOT_CONNECTED
+                # Connection shut down gracefully (recv() returned 0 bytes)
+                conn_error = ConnectionInitClosedError("Connection closed during handshake")
 
             self._connect_error(conn_error, conn)
 

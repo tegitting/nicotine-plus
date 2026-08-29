@@ -38,6 +38,7 @@ EVENT_NAMES = {
     "server-login",
     "server-reconnect",
     "user-country",
+    "user-login-required",
     "user-stats",
     "user-status",
     "watch-user",
@@ -68,6 +69,7 @@ EVENT_NAMES = {
     "global-room-message",
     "join-room",
     "leave-room",
+    "room-invitation-rejected",
     "room-members",
     "room-membership-granted",
     "room-membership-revoked",
@@ -126,6 +128,7 @@ EVENT_NAMES = {
     "file-search-response",
     "remove-search",
     "remove-wish",
+    "search-failed",
     "set-wishlist-interval",
     "show-search",
     "update-wish-filters",
@@ -135,6 +138,7 @@ EVENT_NAMES = {
 
     # Shares
     "folder-contents-request",
+    "shared-file-list-failed",
     "shared-file-list-progress",
     "shared-file-list-request",
     "shared-file-list-response",
@@ -161,7 +165,7 @@ EVENT_NAMES = {
     "file-transfer-init",
     "file-upload-progress",
     "folder-contents-response",
-    "folder-contents-timeout",
+    "folder-contents-failed",
     "folder-download-finished",
     "peer-connection-closed",
     "peer-connection-error",
@@ -181,6 +185,7 @@ EVENT_NAMES = {
     "uploads-shutdown-cancel",
 
     # User info
+    "user-info-failed",
     "user-info-progress",
     "user-info-remove-user",
     "user-info-request",
@@ -271,7 +276,7 @@ class Events:
                 from pynicotine import core
                 module_name = function.__module__.split(".", 1)[0]
 
-                if core.pluginhandler is None or module_name not in core.pluginhandler.enabled_plugins:
+                if core.pluginhandler is None or not core.pluginhandler.is_plugin_loaded(module_name):
                     core.quit()
                     raise error
 

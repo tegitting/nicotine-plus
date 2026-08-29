@@ -27,6 +27,7 @@ from pynicotine.slskmessages import initial_token
 from pynicotine.slskmessages import RemoveAllowedResponse
 from pynicotine.slskmessages import RoomSearch
 from pynicotine.slskmessages import UserSearch
+from pynicotine.slskmessages import UserStatus
 from pynicotine.slskmessages import WishlistSearch
 from pynicotine.utils import TRANSLATE_PUNCTUATION
 from pynicotine.utils import encode_path
@@ -102,7 +103,7 @@ class WishSearchRequest(SearchRequest):
             "filter_mode": self.filter_mode,
             "time_added": self.time_added,
             "custom_filters": self.custom_filters,
-            "ignored_users": list(sorted(self.ignored_users))
+            "ignored_users": sorted(self.ignored_users)
         }
 
 
@@ -251,14 +252,18 @@ class Search:
             del items[self.SEARCH_HISTORY_LIMIT:]
             config.write_configuration()
 
-        self.send_search_request(search.token)
         events.emit("add-search", search.token, search, switch_page)
+        self.send_search_request(search.token)
 
     def send_search_request(self, token):
 
         search = self.searches.get(token)
 
         if search is None:
+            return
+
+        if core.users.login_status == UserStatus.OFFLINE:
+            events.emit("search-failed", token, is_offline=True)
             return
 
         self.add_allowed_token(token)
@@ -448,7 +453,7 @@ class Search:
 
             search_term_words_transmitted.append(word)
 
-        sanitized_search_term_transmitted = " ".join(x for x in search_term_words_transmitted).strip()
+        sanitized_search_term_transmitted = " ".join(search_term_words_transmitted).strip()
 
         # Only modify search term if string also contains non-special characters
         if sanitized_search_term_transmitted:
@@ -888,12 +893,10 @@ class Search:
                 first_char = word[0]
 
                 if first_char == excluded_char:
-                    for subword in word.translate(TRANSLATE_PUNCTUATION).split():
-                        excluded_words.add(subword)
+                    excluded_words.update(word.translate(TRANSLATE_PUNCTUATION).split())
 
                 elif first_char == partial_char:
-                    for subword in word.translate(TRANSLATE_PUNCTUATION).split():
-                        partial_words.add(subword)
+                    partial_words.update(word.translate(TRANSLATE_PUNCTUATION).split())
 
         # Strip punctuation
         search_term = search_term.translate(TRANSLATE_PUNCTUATION).strip()

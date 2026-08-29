@@ -16,42 +16,50 @@ permissions: {}
 
 jobs:
   python-dist:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # Setuptools doesn't support SOURCE_DATE_EPOCH for sdists, so this is only used for wheels for now
+      - name: Set reproducible timestamp
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install gettext python3-build
+          sudo apt-get update
+          sudo apt-get install gettext python3-build twine
 
       - name: Build package
-        run: python -m build
+        run: python -m build --no-isolation
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-dist
           path: dist/
+          if-no-files-found: error
+
+      - name: Verify package
+        run: python -m twine check --strict dist/*
 
   debian:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install python3-build
-          sudo apt build-dep .
+          sudo apt-get update
+          sudo apt-get install python3-build
+          sudo apt-get build-dep .
 
       - name: Build Debian package
         run: |
@@ -69,6 +77,7 @@ jobs:
         with:
           name: debian-package
           path: build/package/
+          if-no-files-found: error
 
   flatpak:
     timeout-minutes: 15
@@ -85,7 +94,7 @@ jobs:
       options: --privileged
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -93,7 +102,7 @@ jobs:
         run: flatpak-builder-lint --exceptions manifest build-aux/flatpak/org.nicotine_plus.Nicotine.json
 
       - name: Validate appstream
-        run: flatpak-builder-lint appstream data/org.nicotine_plus.Nicotine.appdata.xml.in
+        run: flatpak-builder-lint appstream data/org.nicotine_plus.Nicotine.metainfo.xml.in
 
       - name: Build Flatpak package
         run: |
@@ -114,6 +123,7 @@ jobs:
         with:
           name: flatpak-${{ matrix.arch }}-package
           path: org.nicotine_plus.Nicotine-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
 
   snap:
     timeout-minutes: 15
@@ -127,7 +137,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -150,6 +160,7 @@ jobs:
         with:
           name: snap-${{ matrix.arch }}-package
           path: nicotine-plus_*.snap
+          if-no-files-found: error
 
   appimage:
     timeout-minutes: 15
@@ -161,20 +172,20 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Miniforge
         run: |
-          wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+          curl --proto "=https" -fLO "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
           bash "Miniforge3-$(uname)-$(uname -m).sh" -b -p "$HOME/miniforge3"
           echo "$HOME/miniforge3/bin" >> "$GITHUB_PATH"
 
       - name: Set up environment
         run: |
-          sudo apt update
-          sudo apt install --no-install-recommends cage file fuse
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends cage file fuse
 
           mamba create -n nicotine-plus
           mamba create -n startup-test
@@ -182,6 +193,13 @@ jobs:
 
       - name: Freeze application
         run: mamba run -n nicotine-plus python3 build-aux/appimage/setup.py bdist_appimage
+
+      - name: Archive installer artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appimage-${{ matrix.arch }}-package
+          path: build-aux/appimage/build/*.AppImage
+          if-no-files-found: error
 
       - name: Test application startup
         run: |
@@ -191,12 +209,6 @@ jobs:
           export DBUS_SESSION_BUS_ADDRESS=
 
           mamba run -n startup-test cage python3 build-aux/appimage/testrun.py
-
-      - name: Archive installer artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: appimage-${{ matrix.arch }}-package
-          path: build-aux/appimage/build/*.AppImage
 
   windows:
     timeout-minutes: 15
@@ -219,7 +231,7 @@ jobs:
         shell: msys2 {0}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -249,10 +261,6 @@ jobs:
       - name: Freeze application
         run: python3 build-aux/windows/setup.py bdist_msi
 
-      - name: Test application startup
-        shell: cmd  # Exclude msys2 dependencies
-        run: python3 build-aux/windows/testrun.py
-
       - name: Make package portable
         run: |
           mkdir build-aux/windows/build/package/Nicotine+/portable/
@@ -263,12 +271,18 @@ jobs:
         with:
           name: windows-${{ matrix.arch }}-installer
           path: build-aux/windows/build/*.msi
+          if-no-files-found: error
 
       - name: Archive portable artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-${{ matrix.arch }}-portable
           path: build-aux/windows/build/package
+          if-no-files-found: error
+
+      - name: Test application startup
+        shell: cmd  # Exclude msys2 dependencies
+        run: python3 build-aux/windows/testrun.py
 
   macos:
     timeout-minutes: 15
@@ -282,13 +296,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Miniforge
         run: |
-          wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+          curl --proto "=https" -fLO "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
           bash "Miniforge3-$(uname)-$(uname -m).sh" -b -p "$HOME/miniforge3"
           echo "$HOME/miniforge3/bin" >> "$GITHUB_PATH"
 
@@ -301,14 +315,15 @@ jobs:
       - name: Freeze application
         run: mamba run -n nicotine-plus python3 build-aux/macos/setup.py bdist_dmg
 
-      - name: Test application startup
-        run: mamba run -n startup-test python3 build-aux/macos/testrun.py
-
       - name: Archive installer artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-${{ matrix.arch }}-installer
           path: build-aux/macos/build/*.dmg
+          if-no-files-found: error
+
+      - name: Test application startup
+        run: mamba run -n startup-test python3 build-aux/macos/testrun.py
 
   checksums:
     needs: [python-dist, debian, flatpak, snap, appimage, windows, macos]
@@ -316,7 +331,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -331,40 +346,25 @@ jobs:
         run: python data/scripts/generate_sha256_checksums.py
 
       - name: Verify checksums
-        run: cd dist && sha256sum --check ./*.sha256
-
-      - name: Verify list of artifacts
         run: |
           cd dist
           ls \
-            appimage-x86_64-package.zip \
             appimage-x86_64-package.zip.sha256 \
-            debian-package.zip \
             debian-package.zip.sha256 \
-            flatpak-aarch64-package.zip \
             flatpak-aarch64-package.zip.sha256 \
-            flatpak-x86_64-package.zip \
             flatpak-x86_64-package.zip.sha256 \
-            macos-arm64-installer.zip \
             macos-arm64-installer.zip.sha256 \
-            macos-x86_64-installer.zip \
             macos-x86_64-installer.zip.sha256 \
-            python-dist.zip \
             python-dist.zip.sha256 \
-            snap-arm64-package.zip \
             snap-arm64-package.zip.sha256 \
-            snap-x86_64-package.zip \
             snap-x86_64-package.zip.sha256 \
-            windows-arm64-installer.zip \
             windows-arm64-installer.zip.sha256 \
-            windows-arm64-portable.zip \
             windows-arm64-portable.zip.sha256 \
-            windows-x86_64-installer.zip \
             windows-x86_64-installer.zip.sha256 \
-            windows-x86_64-portable.zip \
             windows-x86_64-portable.zip.sha256
+          sha256sum --check ./*.sha256
 
-      - name: Archive installer artifacts
+      - name: Upload checksums
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: checksums
@@ -390,7 +390,7 @@ jobs:
         run: cd dist && unzip checksums.zip
 
       - name: Attest
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/
 
@@ -403,7 +403,7 @@ jobs:
       notes: ${{ steps.notes.outputs.notes }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -467,7 +467,7 @@ jobs:
           path: dist/
 
       - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   github-release:
     if: github.event_name == 'workflow_dispatch' && inputs.create_release
@@ -485,7 +485,7 @@ jobs:
       NOTES: ${{ needs.metadata.outputs.notes }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 

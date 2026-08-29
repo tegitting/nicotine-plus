@@ -97,7 +97,7 @@ class ComboBox:
             button_factory = Gtk.SignalListItemFactory()
 
             button_factory.connect("setup", self._on_button_factory_setup_gtk4)
-            button_factory.connect("bind", self._on_button_factory_bind_gtk4)
+            button_factory.connect("bind", self._on_factory_bind_gtk4)
 
         self.dropdown.set_factory(button_factory)
         self.dropdown.set_list_factory(list_factory)
@@ -130,7 +130,7 @@ class ComboBox:
         list_factory = Gtk.SignalListItemFactory()
 
         list_factory.connect("setup", self._on_entry_list_factory_setup_gtk4)
-        list_factory.connect("bind", self._on_entry_list_factory_bind_gtk4)
+        list_factory.connect("bind", self._on_factory_bind_gtk4)
 
         self.dropdown.set_list_factory(list_factory)
 
@@ -180,6 +180,7 @@ class ComboBox:
             self.dropdown.set_size_request(width=1, height=-1)
 
         add_css_class(self.dropdown, "entry")
+        add_css_class(self.dropdown, "raised")
         container.append(self.widget)
 
     def _create_combobox_gtk3(self, container, label, has_entry, has_entry_completion, has_dropdown):
@@ -528,21 +529,17 @@ class ComboBox:
         self.entry.set_position(-1)
         return True
 
-    def _on_button_factory_bind_gtk4(self, _factory, list_item):
-        label = list_item.get_child()
-        label.set_text(list_item.get_item().get_string())
-
     def _on_button_factory_setup_gtk4(self, _factory, list_item):
         list_item.set_child(
             Gtk.Label(ellipsize=Pango.EllipsizeMode.END, mnemonic_widget=self.widget, xalign=0))
 
-    def _on_entry_list_factory_bind_gtk4(self, _factory, list_item):
-        label = list_item.get_child()
-        label.set_text(list_item.get_item().get_string())
-
     def _on_entry_list_factory_setup_gtk4(self, _factory, list_item):
         list_item.set_child(
             Gtk.Label(ellipsize=Pango.EllipsizeMode.END, xalign=0))
+
+    def _on_factory_bind_gtk4(self, _factory, list_item):
+        label = list_item.get_child()
+        label.set_text(list_item.get_item().get_string())
 
     def _on_list_tab_accelerator_gtk4(self, *_args):
         # Disable focus move with Tab key

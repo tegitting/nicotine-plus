@@ -34,7 +34,6 @@ from pynicotine.gtkgui.widgets.theme import add_css_class
 from pynicotine.gtkgui.widgets.theme import get_file_type_icon_name
 from pynicotine.gtkgui.widgets.theme import remove_css_class
 from pynicotine.gtkgui.widgets.treeview import TreeView
-from pynicotine.slskmessages import ConnectionType
 from pynicotine.slskmessages import FileListMessage
 from pynicotine.slskmessages import UserStatus
 from pynicotine.utils import human_size
@@ -70,10 +69,9 @@ class UserBrowses(IconNotebook):
 
         # Events
         for event_name, callback in (
-            ("peer-connection-closed", self.peer_connection_error),
-            ("peer-connection-error", self.peer_connection_error),
             ("quit", self.quit),
             ("server-disconnect", self.server_disconnect),
+            ("shared-file-list-failed", self.shared_file_list_failed),
             ("shared-file-list-progress", self.shared_file_list_progress),
             ("shared-file-list-response", self.shared_file_list),
             ("user-browse-remove-user", self.remove_user),
@@ -166,22 +164,19 @@ class UserBrowses(IconNotebook):
         del self.pages[user]
         page.destroy()
 
-    def peer_connection_error(self, username, conn_type, **_unused):
-
-        page = self.pages.get(username)
-
-        if page is None:
-            return
-
-        if conn_type == ConnectionType.PEER:
-            page.peer_connection_error()
-
     def user_status(self, msg):
 
         page = self.pages.get(msg.user)
 
         if page is not None:
             self.set_user_status(page.container, msg.user, msg.status)
+
+    def shared_file_list_failed(self, username, is_offline=False):
+
+        page = self.pages.get(username)
+
+        if page is not None:
+            page.shared_file_list_failed(is_offline)
 
     def shared_file_list_progress(self, user, _sock, position, total):
 
@@ -578,11 +573,6 @@ class UserBrowse:
 
     def shared_file_list(self, msg):
 
-        # Always accept file list loaded from disk, but not unsolicited file list messages from
-        # online users
-        if not self.refreshing and msg.sock is not None:
-            return
-
         is_empty = (not msg.list and not msg.privatelist)
         self.local_permission_level = msg.permission_level
 
@@ -600,16 +590,13 @@ class UserBrowse:
 
         self.set_finished()
 
-    def peer_connection_error(self):
+    def shared_file_list_failed(self, is_offline=False):
 
-        if not self.refreshing:
-            return
-
-        if core.users.statuses.get(self.user, UserStatus.OFFLINE) == UserStatus.OFFLINE:
-            error_message = _("Cannot request information from the user, since they are offline.")
+        if is_offline:
+            error_message = _("Cannot request information from the user, since they are offline")
         else:
             error_message = _("Cannot request information from the user, possibly due to "
-                              "a closed listening port or temporary connectivity issue.")
+                              "a closed listening port or temporary connectivity issue")
 
         self.info_bar.show_error_message(error_message)
         self.retry_button.set_visible(True)
@@ -624,9 +611,6 @@ class UserBrowse:
         return repeat
 
     def shared_file_list_progress(self, position, total):
-
-        if not self.refreshing:
-            return
 
         self.indeterminate_progress = False
 
@@ -649,10 +633,6 @@ class UserBrowse:
 
         self.indeterminate_progress = self.refreshing = True
         self.info_bar.set_visible(False)
-
-        if core.users.login_status == UserStatus.OFFLINE and self.user != config.sections["server"]["login"]:
-            self.peer_connection_error()
-            return
 
         self.progress_bar.get_parent().set_reveal_child(True)
         self.progress_bar.pulse()
@@ -682,7 +662,9 @@ class UserBrowse:
 
     def populate_path_bar(self, folder_path=""):
 
-        for widget in list(self.path_bar):
+        old_widgets = list(self.path_bar)
+
+        for widget in old_widgets:
             self.path_bar.remove(widget)
 
         if not folder_path:
@@ -712,44 +694,42 @@ class UserBrowse:
                 ellipsize = Pango.EllipsizeMode.NONE
 
             button_label = Gtk.Label(label=folder, ellipsize=ellipsize, width_chars=width_chars, visible=True)
-
-            if index == len(folder_path_split) - 1:
-                button = Gtk.MenuButton(visible=True)
-                self.folder_popup_menu.set_menu_button(button)
-                add_css_class(button_label, "heading")
-
-                if GTK_API_VERSION >= 4:
-                    button.set_child(button_label)                              # pylint: disable=no-member
-                    button.set_always_show_arrow(True)                          # pylint: disable=no-member
-                    button.set_has_frame(False)                                 # pylint: disable=no-member
-                    button.set_create_popup_func(self.on_folder_popup_menu)     # pylint: disable=no-member
-
-                    inner_button = next(iter(button))
-                    button_label.set_mnemonic_widget(inner_button)
-                else:
-                    box = Gtk.Box(spacing=6, visible=True)
-                    arrow_icon = Gtk.Image(icon_name="pan-down-symbolic", visible=True)
-                    box.add(button_label)                                       # pylint: disable=no-member
-                    box.add(arrow_icon)                                         # pylint: disable=no-member
-
-                    button.add(box)                                             # pylint: disable=no-member
-                    button.connect("clicked", self.on_folder_popup_menu)
-
-                    button_label.set_mnemonic_widget(button)
-            else:
-                button = Gtk.Button(child=button_label, visible=True)
-                button.connect("clicked", self.on_path_bar_clicked, i_folder_path)
-                add_css_class(button_label, "normal")
-
-                button_label.set_mnemonic_widget(button)
+            button = Gtk.Button(child=button_label, visible=True)
+            button.connect("clicked", self.on_path_bar_clicked, i_folder_path)
+            button_label.set_mnemonic_widget(button)
 
             add_css_class(button, "flat")
             remove_css_class(button, "text-button")
 
-            if GTK_API_VERSION >= 4:
-                self.path_bar.append(button)  # pylint: disable=no-member
+            if index == len(folder_path_split) - 1:
+                container = Gtk.Box(visible=True)
+                menu_button = Gtk.MenuButton(tooltip_text=_("Folder Actions"), visible=True)
+                self.folder_popup_menu.set_menu_button(menu_button)
+
+                add_css_class(button_label, "heading")
+                add_css_class(menu_button, "narrow")
+
+                if GTK_API_VERSION >= 4:
+                    menu_button.set_has_frame(False)                                 # pylint: disable=no-member
+                    menu_button.set_create_popup_func(self.on_folder_popup_menu)     # pylint: disable=no-member
+
+                    container.append(button)                                         # pylint: disable=no-member
+                    container.append(menu_button)                                    # pylint: disable=no-member
+                    self.path_bar.append(container)                                  # pylint: disable=no-member
+                else:
+                    add_css_class(menu_button, "flat")
+                    menu_button.connect("clicked", self.on_folder_popup_menu)
+
+                    container.add(button)                                            # pylint: disable=no-member
+                    container.add(menu_button)                                       # pylint: disable=no-member
+                    self.path_bar.add(container)                                     # pylint: disable=no-member
             else:
-                self.path_bar.add(button)     # pylint: disable=no-member
+                add_css_class(button_label, "normal")
+
+                if GTK_API_VERSION >= 4:
+                    self.path_bar.append(button)  # pylint: disable=no-member
+                else:
+                    self.path_bar.add(button)     # pylint: disable=no-member
 
     def set_active_folder(self, folder_path):
 

@@ -534,8 +534,7 @@ class TreeView:
         included_values = []
 
         for index, value in enumerate(values):
-            if not value and index is not self._sort_column:
-                # Skip empty values if not active sort column to avoid unnecessary work
+            if value is None:
                 continue
 
             if index in self._column_gvalues:
@@ -721,6 +720,10 @@ class TreeView:
                 return country_code
 
             country_name = core.network_filter.COUNTRIES.get(country_code, _("Unknown"))
+
+            if country_code == "XX":
+                return country_name
+
             return f"{country_name} ({country_code})"
 
         if column.id == "status":

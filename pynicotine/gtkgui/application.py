@@ -99,6 +99,7 @@ class Application:
             ("confirm-quit", self.on_confirm_quit),
             ("invalid-password", self.on_invalid_password),
             ("invalid-username", self.on_invalid_username),
+            ("room-invitation-rejected", self.on_room_invitation_rejected),
             ("quit", self._instance.quit),
             ("server-login", self._update_user_status),
             ("server-disconnect", self._update_user_status),
@@ -320,7 +321,7 @@ class Application:
         menu.add_items(
             ("=" + _("_Connect"), "app.connect"),
             ("=" + _("_Disconnect"), "app.disconnect"),
-            ("#" + _("Soulseek _Privileges"), "app.soulseek-privileges"),
+            ("#" + _("Soulseek Pri_vileges"), "app.soulseek-privileges"),
             ("", None)
         )
 
@@ -377,6 +378,13 @@ class Application:
 
         return menu
 
+    def _create_window_menu(self):
+
+        from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
+
+        menu = PopupMenu(self)
+        return menu
+
     def _create_help_menu(self):
 
         from pynicotine.gtkgui.widgets.popupmenu import PopupMenu
@@ -407,9 +415,14 @@ class Application:
         menu = PopupMenu(self)
         menu.add_items(
             (">" + _("_File"), self._create_file_menu()),
-            (">" + _("_Shares"), self._create_shares_menu()),
-            (">" + _("_Help"), self._create_help_menu())
+            (">" + _("_Shares"), self._create_shares_menu())
         )
+
+        if (GTK_API_VERSION, GTK_MINOR_VERSION) >= (4, 20) and sys.platform == "darwin":
+            # Special macOS submenu for window actions
+            menu.add_items((">" + _("_Window"), self._create_window_menu()))
+
+        menu.add_items((">" + _("_Help"), self._create_help_menu()))
 
         menu.update_model()
         self._instance.set_menubar(menu.model)
@@ -592,6 +605,26 @@ class Application:
 
     def on_invalid_username(self, *_args):
         self.on_fast_configure(invalid_username=True)
+
+    def on_room_invitation_rejected_response(self, _dialog, _response_id, username):
+        core.privatechat.show_user(username)
+
+    def on_room_invitation_rejected(self, username):
+
+        from pynicotine.gtkgui.widgets.dialogs import OptionDialog
+
+        OptionDialog(
+            application=self,
+            title=_("Room Invitation Rejected"),
+            message=_("User %(user)s has not enabled private room invitations. Message them and ask "
+                      "them to do so before inviting them again.") % {"user": username},
+            buttons=[
+                ("cancel", _("_Cancel")),
+                ("open_chat", _("Open _Private Chat"))
+            ],
+            callback=self.on_room_invitation_rejected_response,
+            callback_data=username
+        ).present()
 
     def on_user_status(self, msg):
         if msg.user == core.users.login_username:
@@ -934,7 +967,7 @@ class Application:
             while traceback.tb_next:
                 file_path = traceback.tb_frame.f_code.co_filename
 
-                for plugin_name in core.pluginhandler.enabled_plugins:
+                for plugin_name in core.pluginhandler.loaded_plugins:
                     plugin_path = core.pluginhandler.get_plugin_path(plugin_name)
 
                     if file_path.startswith(plugin_path):
