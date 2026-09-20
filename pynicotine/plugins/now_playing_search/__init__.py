@@ -2,6 +2,7 @@ from pynicotine.pluginsystem import BasePlugin
 from gi.repository import GLib
 import random
 
+
 class Plugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
@@ -28,42 +29,44 @@ class Plugin(BasePlugin):
         self.loop_id = None
         self.plugin_running = False
         self.current_index = 0
-        self.connected = False
+
+    def is_server_connected(self):
+        """Dynamically checks connection status across current and legacy Nicotine+ versions."""
+        server = (
+            getattr(self.core, "server", None)
+            or getattr(self.core, "slsk", None)
+            or getattr(self.core, "networkserver", None)
+        )
+        if server is None:
+            return False
+
+        if hasattr(server, "connected"):
+            return bool(server.connected)
+        if hasattr(server, "is_connected"):
+            return bool(server.is_connected())
+        return False
 
     def init(self):
         self.plugin_running = True
         self.current_index = 0
 
-        # Safe initial connection check
-        try:
-            self.connected = bool(getattr(getattr(self.core, "networkserver", None), "connected", False))
-        except Exception:
-            self.connected = False
-
+        connected = self.is_server_connected()
         freq = self.settings["frequency"]
         min_d, max_d = self.RANGES[freq]
 
         self.log("--- Wishlist Plugin Enabled (1 search per cycle) ---")
         self.log(f"Frequency: {freq.upper()} → {min_d}–{max_d} seconds (randomised)")
-        self.log(f"Initial status: {'CONNECTED ✓' if self.connected else 'OFFLINE — waiting'}")
+        self.log(f"Initial status: {'CONNECTED ✓' if connected else 'OFFLINE — waiting'}")
 
         initial_delay = random.uniform(5, 15)
         self.log(f"Starting in ~{initial_delay:.1f} seconds")
         self.loop_id = GLib.timeout_add_seconds(int(initial_delay), self.search_next)
 
-    def server_connect_notification(self):
-        self.connected = True
-        self.log("Connected — searches active")
-
-    def server_disconnect_notification(self, userchoice):
-        self.connected = False
-        self.log("Disconnected — searches paused")
-
     def search_next(self):
         if not self.plugin_running:
             return False
 
-        if not self.connected:
+        if not self.is_server_connected():
             self.log("Not connected — skipping cycle")
             self._reschedule()
             return False
@@ -82,15 +85,21 @@ class Plugin(BasePlugin):
 
         total = len(wishlist)
         idx = self.current_index % total
-        query = wishlist[idx]
-        position = f"{idx + 1}/{total}"
+        item = wishlist[idx]
 
-        self.log(f"[{position}] Searching: {query}")
+        # Handles both string list items and dictionary entries in newer versions
+        query = item.get("query", "") if isinstance(item, dict) else str(item)
 
-        try:
-            self.core.search.do_search(query, mode="global")
-        except Exception as e:
-            self.log(f"  └─ Failed: {e}")
+        if query:
+            position = f"{idx + 1}/{total}"
+            self.log(f"[{position}] Searching: {query}")
+
+            try:
+                search_obj = getattr(self.core, "search", None) or getattr(self.core, "searches", None)
+                if search_obj:
+                    search_obj.do_search(query)
+            except Exception as e:
+                self.log(f"  └─ Failed: {e}")
 
         self.current_index += 1
         self._reschedule()
