@@ -28,6 +28,8 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+# pylint: disable=consider-alternative-union-syntax,deprecated-typing-alias
+# pylint: disable=use-implicit-booleaness-not-comparison-to-zero
 # pyright: reportPrivateUsage=false
 
 """Audio file metadata reader."""
@@ -42,7 +44,7 @@ TYPE_CHECKING = False
 
 # Lazy imports for type checking
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator  # pylint: disable-all
+    from collections.abc import Callable, Iterator
     from typing import Any, BinaryIO, Dict, List, Tuple, Union
 
     _StringListDict = Dict[str, List[str]]
@@ -244,6 +246,7 @@ class TinyTag:
                 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0):
             footer = None
             try:
+                # pylint: disable=protected-access
                 filehandle.seek(-_ID3._ID3V1_TAG_SIZE, SEEK_END)
                 footer = filehandle.read(3)
             except OSError:
@@ -529,6 +532,7 @@ class _MP4(TinyTag):
         'mp4a.40.37',  # SLS
         'mp4a.40.38',  # SLS non-core
     }
+    _DECODER_SPECIFIC_INFO_TAG = 0x05
     _VERSIONED_ATOMS = {b'meta', b'stsd'}  # those have an extra 4 byte header
     _FLAGGED_ATOMS = {b'stsd'}  # these also have an extra 4 byte header
     _ILST_PATH = [b'ftyp', b'moov', b'udta', b'meta', b'ilst']
@@ -841,7 +845,7 @@ class _MP4(TinyTag):
                 byte = data[offset]
                 offset += 1
                 size = (size << 7) | (byte & ((1 << 7) - 1))
-                if not (byte & continuation):
+                if not byte & continuation:
                     break
             return size, offset
 
@@ -859,19 +863,21 @@ class _MP4(TinyTag):
         avg_br = unpack_from('>I', data, offset)[0]
         if avg_br > 0:
             yield 'bitrate', avg_br / 1000  # kbit/s
-        offset += 5
+        offset += 4
 
-        # Decoder Specific Info
-        _size, offset = _read_descriptor_size(data, offset)
-        first = data[offset]
-        second = data[offset + 1]
-        audio_object_type = first >> 3
-        if audio_object_type == 31:
-            # Read extended value
-            extended = ((first & 0x07) << 3) | (second >> 5)
-            audio_object_type = 32 + extended
-        if audio_object_type:
-            codec += f'.{audio_object_type}'
+        # Decoder Specific Info (optional)
+        if len(data) > offset:
+            descriptor_tag = data[offset]
+            offset += 1
+            if descriptor_tag == cls._DECODER_SPECIFIC_INFO_TAG:
+                _size, offset = _read_descriptor_size(data, offset)
+                first = data[offset]
+                audio_object_type = first >> 3
+                if audio_object_type == 31:
+                    # Read extended value
+                    extended = ((first & 0x07) << 3) | (data[offset + 1] >> 5)
+                    audio_object_type = 32 + extended
+                codec += f'.{audio_object_type}'
         if object_type:
             yield 'codec', codec
             yield 'is_lossless', codec in cls._LOSSLESS_CODECS
@@ -1088,8 +1094,8 @@ class _ID3(TinyTag):
             flac_tag = _Flac()
             flac_tag.filename = self.filename
             flac_tag.filesize = self.filesize
-            flac_tag._filehandler = fh
-            flac_tag._load(
+            flac_tag._filehandler = fh  # pylint: disable=protected-access
+            flac_tag._load(  # pylint: disable=protected-access
                 tags=self._parse_tags, duration=self._parse_duration,
                 image=self._load_image)
             self._update(flac_tag)
@@ -1105,6 +1111,7 @@ class _ID3(TinyTag):
             mpeg_tag = _MPEG()
             mpeg_tag.filename = self.filename
             mpeg_tag.filesize = self.filesize
+            # pylint: disable=protected-access
             mpeg_tag._filehandler = fh
             mpeg_tag._end_padding = end_padding
             mpeg_tag._load(tags=False, duration=self._parse_duration)
@@ -1145,10 +1152,7 @@ class _ID3(TinyTag):
         return size
 
     def _parse_id3v1(self, fh: BinaryIO) -> bool:
-        if self._parse_tags:
-            content = fh.read(3 + 30 + 30 + 30 + 4 + 30 + 1)
-        else:
-            content = fh.read(3)
+        content = fh.read(128 if self._parse_tags else 3)
         if not content.startswith(b'TAG'):  # check if this is an ID3 v1 tag
             return False
         if not self._parse_tags:
@@ -1426,16 +1430,16 @@ class _ID3(TinyTag):
     def _find_string_end_pos(content: bytes,
                              encoding: int = 0x00,
                              start_pos: int = 0) -> int:
-        # latin1 and utf-8 are 1 byte
+        # pylint: disable=consider-using-in
+        # latin1 and utf-8
         if encoding == 0x00 or encoding == 0x03:
             end_pos = content.find(b'\x00', start_pos)
             return start_pos if end_pos < 0 else end_pos + 1
-        end_pos = -1
-        for i in range(start_pos, len(content) - 1, 2):
-            if content[i] == 0x00 and content[i + 1] == 0x00:
-                end_pos = i + 2
-                break
-        return start_pos if end_pos < 0 else end_pos
+        # utf-16
+        end_pos = content.find(b'\x00\x00', start_pos)
+        while end_pos >= 0 and (end_pos - start_pos) % 2 != 0:
+            end_pos = content.find(b'\x00\x00', end_pos + 1)
+        return start_pos if end_pos < 0 else end_pos + 2
 
     def _decode_string(self, value: bytes, encoding: int | None = None) -> str:
         if encoding == 0x00:  # ISO-8859-1 (but allow override)
@@ -1589,10 +1593,12 @@ class _MPEG(TinyTag):
                 xframes = 0
                 byte_count = 0
                 prev_offset = header_len + audio_offset
+                is_vbr = True
                 frame_content = fh.read(min(50, frame_length))  # optimization
                 xing_header_offset = frame_content.find(b'Xing')  # VBR
                 if xing_header_offset == -1:
                     xing_header_offset = frame_content.find(b'Info')  # CBR
+                    is_vbr = False
                 if xing_header_offset != -1:
                     xframes, byte_count = self._parse_xing_header(
                         frame_content, xing_header_offset)
@@ -1605,7 +1611,7 @@ class _MPEG(TinyTag):
                 if xframes > 0 and byte_count > 0:
                     self.duration = dur = xframes * samples_pf / samplerate
                     self.bitrate = byte_count * 8 / dur / 1000
-                    self.is_vbr = True
+                    self.is_vbr = is_vbr
                     self._duration_parsed = True
                     return
                 fh.seek(prev_offset)
@@ -1882,6 +1888,7 @@ class _Ogg(TinyTag):
             fh, self._load_image
         ):
             if isinstance(value, Image):
+                # pylint: disable=protected-access
                 self.images._set_field(fieldname, value)
                 continue
             self._set_field(fieldname, value)
@@ -2036,12 +2043,11 @@ class _Wave(TinyTag):
                         # IFF chunks are padded to an even size
                         data_length += data_length % 2
                         data = self._unpad_bytes(walker.read(data_length))
-                        if field in self._RIFF_MAPPING:
-                            fieldname = self._RIFF_MAPPING[field]
-                        else:
-                            fieldname = (
-                                self._OTHER_PREFIX
-                                + field.decode('latin-1')).lower()
+                        fieldname = self._RIFF_MAPPING.get(
+                            field,
+                            (self._OTHER_PREFIX
+                             + field.decode('latin-1')).lower()
+                        )
                         value = data.decode('utf-8', 'replace')
                         if fieldname == 'track':
                             if value.isdecimal():
@@ -2100,7 +2106,7 @@ class _Flac(TinyTag):
         while len(block_header) == header_len:
             block_type = block_header[0] & 0x7f
             is_last_block = bool(block_header[0] & 0x80)
-            is_streaminfo_block = (block_type == self._STREAMINFO)
+            is_streaminfo_block = block_type == self._STREAMINFO
             size = int.from_bytes(block_header[1:], 'big')
             # http://xiph.org/flac/format.html#metadata_block_streaminfo
             if (self._parse_duration and is_streaminfo_block
@@ -2303,7 +2309,7 @@ class _ASF(TinyTag):
                 }
                 for i_field_name, length in data_blocks.items():
                     value = self._unpad(
-                        walker.read(length).decode('utf-16', 'replace'))
+                        walker.read(length).decode('utf-16le', 'replace'))
                     if not i_field_name.startswith('_') and value:
                         self._set_field(i_field_name, value)
             elif (self._parse_tags
@@ -2314,7 +2320,7 @@ class _ASF(TinyTag):
                 for _ in range(descriptor_count):
                     name_len = unpack('<H', walker.read(2))[0]
                     name = self._unpad(
-                        walker.read(name_len).decode('utf-16', 'replace'))
+                        walker.read(name_len).decode('utf-16le', 'replace'))
                     value_type, value_len = unpack('<HH', walker.read(4))
                     self._parse_value(walker, name, value_type, value_len)
             elif (self._parse_tags
@@ -2342,7 +2348,7 @@ class _ASF(TinyTag):
                             value_len = unpack('<I', walker.read(4))[0]
                             name = self._unpad(
                                 walker.read(name_len)
-                                .decode('utf-16', 'replace'))
+                                .decode('utf-16le', 'replace'))
                             self._parse_value(
                                 walker, name, value_type, value_len)
                     else:
@@ -2394,7 +2400,8 @@ class _ASF(TinyTag):
                      value_len: int) -> None:
         # Unicode string
         if value_type == 0:
-            value = self._unpad(fh.read(value_len).decode('utf-16', 'replace'))
+            value = self._unpad(
+                fh.read(value_len).decode('utf-16le', 'replace'))
         # DWORD / QWORD / WORD
         elif (1 < value_type < 6
                 and value_len in self._UNPACK_FORMATS):

@@ -72,7 +72,7 @@ following:
 
 ```sh
 sudo apt update; sudo apt install python3-launchpadlib software-properties-common
-sudo add-apt-repository 'deb https://ppa.launchpadcontent.net/nicotine-team/stable/ubuntu jammy main'
+sudo add-apt-repository 'deb https://ppa.launchpadcontent.net/nicotine-team/stable/ubuntu resolute main'
 sudo apt update; sudo apt install nicotine
 ```
 
@@ -109,9 +109,13 @@ pip3 install --upgrade nicotine-plus
 
 Stable installers are available for download.
 
- - [Download Windows Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip)
+ - [Download Windows x64 Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip)
     — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-installer.zip.sha256)  
    for Windows 10 or later
+
+ - [Download Windows ARM64 Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-arm64-installer.zip)
+    — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-arm64-installer.zip.sha256)  
+   for Windows 11 or later
 
 Standalone executables are also available. They can be run from any folder and
 do not require installation.
@@ -121,9 +125,13 @@ configuration files are still stored in the same folder as the installed
 variant, i.e. they will conflict. There are plans to add a portable package
 that stores configuration independently at some point.
 
- - [Download Windows Standalone Package](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip)
+ - [Download Windows x64 Standalone Package](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip)
     — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-x86_64-package.zip.sha256)  
    for Windows 10 or later
+
+ - [Download Windows ARM64 Standalone Package](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-arm64-package.zip)
+    — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/windows-arm64-package.zip.sha256)  
+   for Windows 11 or later
 
 > **IMPORTANT**: The installer format has changed since Nicotine+ 3.2.0. If you
 > are upgrading from Nicotine+ 3.1.1 or earlier, please uninstall Nicotine+
@@ -153,11 +161,11 @@ using them.
 
  - [Download macOS Apple Silicon Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-arm64-installer.zip)
     — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-arm64-installer.zip.sha256)  
-   for macOS 14 Sonoma or later
+   for macOS 11 Big Sur or later
 
  - [Download macOS Intel Installer](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-x86_64-installer.zip)
     — [`SHA256`](https://github.com/nicotine-plus/nicotine-plus/releases/latest/download/macos-x86_64-installer.zip.sha256)  
-   for macOS 13 Ventura or later
+   for macOS 11 Big Sur or later
 
 ### Package Managers
 

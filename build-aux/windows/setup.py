@@ -241,12 +241,12 @@ def add_schemas() -> None:
 
 def add_gtk() -> None:
 
+    if sys.platform == "win32":
+        # gdbus required for single-instance application
+        add_file(file_path=os.path.join(LIB_PATH, "gdbus.exe"), output_path="lib/gdbus.exe")
+
     # Typelibs
     add_typelibs()
-
-    # gdbus required for single-instance application (Windows)
-    if sys.platform == "win32":
-        add_file(file_path=os.path.join(LIB_PATH, "gdbus.exe"), output_path="lib/gdbus.exe")
 
     # Schemas
     add_schemas()
@@ -361,6 +361,7 @@ setup(
             script=os.path.join(PROJECT_PATH, SCRIPT_NAME),
             base="console",
             target_name=f"{pynicotine.__application_name__}-debug",
+            icon=os.path.join(CURRENT_PATH, ICON_NAME),
             manifest=MANIFEST_NAME,
             copyright=pynicotine.__copyright__
         )

@@ -247,11 +247,12 @@ class Scanner:
                  "rescan", "rebuild", "reveal_buddy_shares", "reveal_trusted_shares",
                  "files", "streams", "mtimes", "word_index", "processed_share_names",
                  "processed_share_paths", "current_file_index", "current_folder_count",
-                 "lowercase_paths", "share_filters", "file_filter_regex", "folder_filter_regex")
+                 "lowercase_paths", "share_filters", "file_filter_regex", "folder_filter_regex",
+                 "num_previous_folders")
 
     def __init__(self, writer, share_groups, share_db_paths, init=False, rescan=True,
                  rebuild=False, reveal_buddy_shares=False, reveal_trusted_shares=False,
-                 share_filters=None):
+                 num_previous_folders=0, share_filters=None):
 
         self.writer = writer
         self.share_groups = share_groups
@@ -262,6 +263,7 @@ class Scanner:
         self.rebuild = rebuild
         self.reveal_buddy_shares = reveal_buddy_shares
         self.reveal_trusted_shares = reveal_trusted_shares
+        self.num_previous_folders = num_previous_folders
         self.share_filters = share_filters
         self.files = {}
         self.streams = {}
@@ -303,7 +305,17 @@ class Scanner:
 
             if self.rescan:
                 self.writer.send(
-                    ScannerLogMessage(_("Rebuilding shares…") if self.rebuild else _("Rescanning shares…"))
+                    ScannerLogMessage(
+                        ngettext(
+                            "%(num)s folder found previously, %(action)s…",
+                            "%(num)s folders found previously, %(action)s…",
+                            self.num_previous_folders
+                        ),
+                        {
+                            "num": self.num_previous_folders,
+                            "action": _("rebuilding shares") if self.rebuild else _("rescanning shares")
+                        }
+                    )
                 )
                 self.load_filters()
 
@@ -408,13 +420,13 @@ class Scanner:
 
     def create_compressed_shares(self):
 
-        Shares.load_shares(
-            self.share_dbs, self.share_db_paths, destinations={"public_streams", "buddy_streams", "trusted_streams"}
-        )
+        destinations = {"public_streams", "buddy_streams", "trusted_streams"}
+        Shares.load_shares(self.share_dbs, self.share_db_paths, destinations=destinations)
 
         for permission_level in (PermissionLevel.PUBLIC, PermissionLevel.BUDDY, PermissionLevel.TRUSTED):
             self.create_compressed_shares_message(permission_level)
 
+        self.num_previous_folders = sum(len(self.share_dbs[destination]) for destination in destinations)
         Shares.close_shares(self.share_dbs)
 
     def create_file_path_index(self):
@@ -692,7 +704,7 @@ class Scanner:
         if tag is not None:
             bitrate = tag.bitrate
             samplerate = tag.samplerate
-            bitdepth = tag.bitdepth
+            bitdepth = tag.bitdepth if tag.is_lossless else None
             duration = tag.duration
 
             if bitrate is not None:
@@ -1157,6 +1169,16 @@ class Shares:
         self.close_shares(self.share_dbs)
         self.file_path_index = ()
 
+        # Replace broken stdout/stderr before the multiprocessing module tries to flush them
+        for file_handle in (sys.stdout, sys.stderr):
+            if file_handle is None:
+                continue
+
+            try:
+                file_handle.flush()
+            except OSError:
+                os.dup2(os.open(os.devnull, os.O_WRONLY), file_handle.fileno())
+
         events.emit("shares-scanning")
         self._scanner_process.start()
 
@@ -1245,6 +1267,10 @@ class Shares:
             rebuild,
             reveal_buddy_shares=config.sections["transfers"]["reveal_buddy_shares"],
             reveal_trusted_shares=config.sections["transfers"]["reveal_trusted_shares"],
+            num_previous_folders=sum(
+                len(self.share_dbs.get(destination, {}))
+                for destination in ("public_streams", "buddy_streams", "trusted_streams")
+            ),
             share_filters=config.sections["transfers"]["share_filters"]
         )
         scanner = context.Process(target=scanner_obj.run, daemon=True)
