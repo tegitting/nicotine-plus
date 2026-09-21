@@ -30,21 +30,18 @@ class Plugin(BasePlugin):
         self.plugin_running = False
         self.current_index = 0
 
-    def is_server_connected(self):
-        """Dynamically checks connection status across current and legacy Nicotine+ versions."""
-        server = (
-            getattr(self.core, "server", None)
-            or getattr(self.core, "slsk", None)
-            or getattr(self.core, "networkserver", None)
-        )
-        if server is None:
-            return False
+    def server_connect_notification(self):
+        self.log("Connected — wishlist loop active")
 
-        if hasattr(server, "connected"):
-            return bool(server.connected)
-        if hasattr(server, "is_connected"):
-            return bool(server.is_connected())
-        return False
+    def server_disconnect_notification(self, userchoice):
+        self.log("Disconnected — wishlist loop will skip until reconnect")
+        
+    def is_server_connected(self):
+        try:
+            from pynicotine.slskmessages import UserStatus
+            return self.core.users.login_status != UserStatus.OFFLINE
+        except Exception:
+            return False    
 
     def init(self):
         self.plugin_running = True
