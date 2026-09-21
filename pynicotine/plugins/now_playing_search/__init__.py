@@ -1,4 +1,5 @@
 from pynicotine.pluginsystem import BasePlugin
+from pynicotine.slskmessages import UserStatus
 from gi.repository import GLib
 import random
 
@@ -30,18 +31,12 @@ class Plugin(BasePlugin):
         self.plugin_running = False
         self.current_index = 0
 
-    def server_connect_notification(self):
-        self.log("Connected — wishlist loop active")
-
-    def server_disconnect_notification(self, userchoice):
-        self.log("Disconnected — wishlist loop will skip until reconnect")
-        
     def is_server_connected(self):
+        """True when logged in to the Soulseek server (Online or Away)."""
         try:
-            from pynicotine.slskmessages import UserStatus
             return self.core.users.login_status != UserStatus.OFFLINE
         except Exception:
-            return False    
+            return False
 
     def init(self):
         self.plugin_running = True
@@ -52,19 +47,26 @@ class Plugin(BasePlugin):
         min_d, max_d = self.RANGES[freq]
 
         self.log("--- Wishlist Plugin Enabled (1 search per cycle) ---")
-        self.log(f"Frequency: {freq.upper()} → {min_d}–{max_d} seconds (randomised)")
-        self.log(f"Initial status: {'CONNECTED ✓' if connected else 'OFFLINE — waiting'}")
+        self.log(f"Frequency: {freq.upper()} -> {min_d}-{max_d} seconds (randomised)")
+        self.log(f"Initial status: {'CONNECTED' if connected else 'OFFLINE - waiting'}")
 
         initial_delay = random.uniform(5, 15)
         self.log(f"Starting in ~{initial_delay:.1f} seconds")
         self.loop_id = GLib.timeout_add_seconds(int(initial_delay), self.search_next)
+
+    def server_connect_notification(self):
+        self.log("Connected - wishlist loop active")
+
+    def server_disconnect_notification(self, userchoice):
+        reason = "user requested" if userchoice else "connection lost"
+        self.log(f"Disconnected ({reason}) - wishlist loop will skip until reconnect")
 
     def search_next(self):
         if not self.plugin_running:
             return False
 
         if not self.is_server_connected():
-            self.log("Not connected — skipping cycle")
+            self.log("Not connected - skipping cycle")
             self._reschedule()
             return False
 
@@ -93,10 +95,13 @@ class Plugin(BasePlugin):
 
             try:
                 search_obj = getattr(self.core, "search", None) or getattr(self.core, "searches", None)
-                if search_obj:
-                    search_obj.do_search(query)
+                if search_obj and hasattr(search_obj, "do_search"):
+                    # mode is required in Nicotine+ 3.4+
+                    search_obj.do_search(query, mode="wishlist")
+                else:
+                    self.log("  |- Search API not available")
             except Exception as e:
-                self.log(f"  └─ Failed: {e}")
+                self.log(f"  |- Failed: {e}")
 
         self.current_index += 1
         self._reschedule()
