@@ -19,6 +19,7 @@ from socket import inet_aton
 from socket import inet_ntoa
 from struct import Struct
 
+from pynicotine.logfacility import log
 from pynicotine.utils import UINT32_LIMIT
 from pynicotine.utils import human_length
 
@@ -39,6 +40,7 @@ INT32_PACK = Struct("<i").pack
 UINT32_PACK = Struct("<I").pack
 UINT64_PACK = Struct("<Q").pack
 
+SERVER_USERNAME = "server"
 ZLIB_COMPRESSION_LEVEL = 4
 
 
@@ -137,12 +139,13 @@ class ParentStatus:
 
 class InternalMessage:
     __slots__ = ()
-    __excluded_attrs__ = {}
-    msg_type = MessageType.INTERNAL
+    TYPE = MessageType.INTERNAL
+    LOGGED = True
+    HIDDEN_FIELDS = {}
 
-    def __str__(self):
-        attrs = {s: getattr(self, s) for s in self.__slots__ if s not in self.__excluded_attrs__}
-        return f"<{self.msg_type} - {self.__class__.__name__}> {attrs}"
+    def __repr__(self):
+        attrs = {s: getattr(self, s) for s in self.__slots__ if s not in self.HIDDEN_FIELDS}
+        return f"<{self.TYPE} - {type(self).__name__}> {attrs}"
 
 
 class CloseConnection(InternalMessage):
@@ -155,14 +158,15 @@ class CloseConnection(InternalMessage):
 class ServerConnect(InternalMessage):
     """Sent to the networking thread to establish a server connection."""
 
-    __slots__ = ("addr", "login", "interface_name", "interface_address", "listen_port",
+    __slots__ = ("addr", "username", "password", "interface_name", "interface_address", "listen_port",
                  "portmapper")
-    __excluded_attrs__ = {"login"}
+    HIDDEN_FIELDS = {"username", "password"}
 
-    def __init__(self, addr=None, login=None, interface_name=None, interface_address=None,
+    def __init__(self, addr=None, username=None, password=None, interface_name=None, interface_address=None,
                  listen_port=None, portmapper=None):
         self.addr = addr
-        self.login = login
+        self.username = username
+        self.password = password
         self.interface_name = interface_name
         self.interface_address = interface_address
         self.listen_port = listen_port
@@ -274,8 +278,10 @@ class SlskMessage:
     """This is a parent class for all protocol messages."""
 
     __slots__ = ("_message", "_offset")
-    __excluded_attrs__ = {}
-    msg_type = None
+    TYPE = None
+    EVENT_NAME = None
+    LOGGED = True
+    HIDDEN_FIELDS = {}
 
     def __init__(self, msg_content=None):
         self._message = msg_content
@@ -388,9 +394,9 @@ class SlskMessage:
         self._offset += 8
         return result
 
-    def __str__(self):
-        attrs = {s: getattr(self, s) for s in self.__slots__ if s not in self.__excluded_attrs__}
-        return f"<{self.msg_type} - {self.__class__.__name__}> {attrs}"
+    def __repr__(self):
+        attrs = {s: getattr(self, s) for s in self.__slots__ if s not in self.HIDDEN_FIELDS}
+        return f"<{self.TYPE} - {type(self).__name__}> {attrs}"
 
 
 class FileListMessage(SlskMessage):
@@ -566,14 +572,14 @@ class FileAttributes:
 
 class ParentCandidate:
 
-    __slots__ = ("username", "ip_address", "port", "conn", "branch_root", "branch_level")
+    __slots__ = ("username", "ip_address", "port", "sock", "branch_root", "branch_level")
 
     def __init__(self, username, ip_address, port):
         self.username = username
         self.ip_address = ip_address
         self.port = port
 
-        self.conn = None
+        self.sock = None
         self.branch_root = None
         self.branch_level = None
 
@@ -583,7 +589,7 @@ class ParentCandidate:
 
 class ServerMessage(SlskMessage):
     __slots__ = ()
-    msg_type = MessageType.SERVER
+    TYPE = MessageType.SERVER
 
     def parse_users(self):
         numusers = self.unpack_uint32()
@@ -661,7 +667,8 @@ class Login(ServerMessage):
     __slots__ = ("username", "passwd", "version", "minorversion", "success", "rejection_reason",
                  "rejection_detail", "banner", "ip_address", "local_address", "server_address",
                  "is_supporter")
-    __excluded_attrs__ = {"passwd"}
+    EVENT_NAME = "server-login"
+    HIDDEN_FIELDS = {"passwd"}
 
     def __init__(self, username=None, passwd=None, version=None, minorversion=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -744,6 +751,7 @@ class GetPeerAddress(ServerMessage):
     """
 
     __slots__ = ("user", "ip_address", "port", "obfuscation_type", "obfuscated_port")
+    EVENT_NAME = "peer-address"
 
     def __init__(self, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -777,6 +785,7 @@ class WatchUser(ServerMessage):
 
     __slots__ = ("user", "userexists", "status", "avgspeed", "uploadnum", "unknown", "files", "dirs",
                  "country")
+    EVENT_NAME = "watch-user"
 
     def __init__(self, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -837,6 +846,7 @@ class GetUserStatus(ServerMessage):
     """
 
     __slots__ = ("user", "status", "privileged")
+    EVENT_NAME = "user-status"
 
     def __init__(self, user=None, status=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -907,6 +917,7 @@ class SayChatroom(ServerMessage):
     """
 
     __slots__ = ("room", "message", "user", "message_type", "mention_type", "mention_keyword")
+    EVENT_NAME = "say-chat-room"
 
     def __init__(self, room=None, message=None, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -955,6 +966,7 @@ class JoinRoom(ServerMessage):
     """
 
     __slots__ = ("room", "private", "owner", "users", "operators")
+    EVENT_NAME = "join-room"
 
     def __init__(self, room=None, private=False, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -994,6 +1006,7 @@ class LeaveRoom(ServerMessage):
     """
 
     __slots__ = ("room",)
+    EVENT_NAME = "leave-room"
 
     def __init__(self, room=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1013,6 +1026,7 @@ class UserJoinedRoom(ServerMessage):
     """
 
     __slots__ = ("room", "userdata")
+    EVENT_NAME = "user-joined-room"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1041,6 +1055,7 @@ class UserLeftRoom(ServerMessage):
     """
 
     __slots__ = ("room", "username")
+    EVENT_NAME = "user-left-room"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1062,6 +1077,7 @@ class ConnectToPeer(ServerMessage):
 
     __slots__ = ("token", "user", "conn_type", "ip_address", "port", "privileged", "obfuscation_type",
                  "obfuscated_port")
+    EVENT_NAME = "connect-to-peer"
 
     def __init__(self, token=None, user=None, conn_type=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1101,6 +1117,7 @@ class MessageUser(ServerMessage):
 
     __slots__ = ("user", "message", "message_id", "timestamp", "is_new_message", "message_type",
                  "mention_type", "mention_keyword")
+    EVENT_NAME = "message-user"
 
     def __init__(self, user=None, message=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1184,6 +1201,7 @@ class FileSearch(ServerMessage):
     """
 
     __slots__ = ("token", "searchterm", "search_username")
+    EVENT_NAME = "file-search-request-server"
 
     def __init__(self, token=None, text=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1340,6 +1358,7 @@ class GetUserStats(ServerMessage):
     """
 
     __slots__ = ("user", "avgspeed", "uploadnum", "unknown", "files", "dirs")
+    EVENT_NAME = "user-stats"
 
     def __init__(self, user=None, avgspeed=None, files=None, dirs=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1507,6 +1526,7 @@ class Recommendations(ServerMessage):
     """
 
     __slots__ = ("recommendations", "unrecommendations")
+    EVENT_NAME = "recommendations"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1560,6 +1580,7 @@ class GlobalRecommendations(ServerMessage):
     """
 
     __slots__ = ("recommendations", "unrecommendations")
+    EVENT_NAME = "global-recommendations"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1581,6 +1602,7 @@ class UserInterests(ServerMessage):
     """
 
     __slots__ = ("user", "likes", "hates")
+    EVENT_NAME = "user-interests"
 
     def __init__(self, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1736,6 +1758,7 @@ class RoomList(ServerMessage):
     """
 
     __slots__ = ("rooms", "rooms_owner", "rooms_member", "rooms_operator")
+    EVENT_NAME = "room-list"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1746,12 +1769,6 @@ class RoomList(ServerMessage):
 
     def make_network_message(self):
         return b""
-
-    def parse_network_message(self):
-        self.rooms = self.parse_rooms()
-        self.rooms_owner = self.parse_rooms()
-        self.rooms_member = self.parse_rooms()
-        self.rooms_operator = self.parse_rooms(has_count=False)
 
     def parse_rooms(self, has_count=True):
         numrooms = self.unpack_uint32()
@@ -1774,6 +1791,12 @@ class RoomList(ServerMessage):
             rooms[i][1] = self.unpack_uint32()
 
         return rooms
+
+    def parse_network_message(self):
+        self.rooms = self.parse_rooms()
+        self.rooms_owner = self.parse_rooms()
+        self.rooms_member = self.parse_rooms()
+        self.rooms_operator = self.parse_rooms(has_count=False)
 
 
 class ExactFileSearch(ServerMessage):
@@ -1825,6 +1848,7 @@ class AdminMessage(ServerMessage):
     """
 
     __slots__ = ("msg",)
+    EVENT_NAME = "admin-message"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -1902,6 +1926,7 @@ class PrivilegedUsers(ServerMessage):
     """
 
     __slots__ = ("users",)
+    EVENT_NAME = "privileged-users"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2085,6 +2110,7 @@ class CheckPrivileges(ServerMessage):
     """
 
     __slots__ = ("seconds",)
+    EVENT_NAME = "check-privileges"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2118,6 +2144,7 @@ class EmbeddedMessage(ServerMessage):
     """
 
     __slots__ = ("distrib_code", "distrib_message")
+    LOGGED = False
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2193,6 +2220,7 @@ class WishlistInterval(ServerMessage):
     """
 
     __slots__ = ("seconds",)
+    EVENT_NAME = "set-wishlist-interval"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2210,6 +2238,7 @@ class SimilarUsers(ServerMessage):
     """
 
     __slots__ = ("users",)
+    EVENT_NAME = "similar-users"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2242,6 +2271,7 @@ class ItemRecommendations(ServerMessage):
     """
 
     __slots__ = ("thing", "recommendations", "unrecommendations")
+    EVENT_NAME = "item-recommendations"
 
     def __init__(self, thing=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2266,6 +2296,7 @@ class ItemSimilarUsers(ServerMessage):
     """
 
     __slots__ = ("thing", "users")
+    EVENT_NAME = "item-similar-users"
 
     def __init__(self, thing=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2293,6 +2324,7 @@ class RoomTickers(ServerMessage):
     """
 
     __slots__ = ("room", "user", "msgs")
+    EVENT_NAME = "room-tickers"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2321,6 +2353,7 @@ class RoomTickerAdded(ServerMessage):
     """
 
     __slots__ = ("room", "user", "msg")
+    EVENT_NAME = "room-ticker-added"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2344,6 +2377,7 @@ class RoomTickerRemoved(ServerMessage):
     """
 
     __slots__ = ("room", "user")
+    EVENT_NAME = "room-ticker-removed"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2518,16 +2552,16 @@ class NotifyPrivileges(ServerMessage):
         self.token = token
         self.user = user
 
-    def parse_network_message(self):
-        self.token = self.unpack_uint32()
-        self.user = self.unpack_string()
-
     def make_network_message(self):
         msg = bytearray()
         msg += self.pack_uint32(self.token)
         msg += self.pack_string(self.user)
 
         return msg
+
+    def parse_network_message(self):
+        self.token = self.unpack_uint32()
+        self.user = self.unpack_string()
 
 
 class AckNotifyPrivileges(ServerMessage):
@@ -2542,11 +2576,11 @@ class AckNotifyPrivileges(ServerMessage):
         ServerMessage.__init__(self, msg_content)
         self.token = token
 
-    def parse_network_message(self):
-        self.token = self.unpack_uint32()
-
     def make_network_message(self):
         return self.pack_uint32(self.token)
+
+    def parse_network_message(self):
+        self.token = self.unpack_uint32()
 
 
 class BranchLevel(ServerMessage):
@@ -2630,6 +2664,7 @@ class RoomMembers(ServerMessage):
     """
 
     __slots__ = ("room", "members")
+    EVENT_NAME = "room-members"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2655,6 +2690,7 @@ class AddRoomMember(ServerMessage):
     """
 
     __slots__ = ("room", "user")
+    EVENT_NAME = "add-room-member"
 
     def __init__(self, room=None, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2684,6 +2720,7 @@ class RemoveRoomMember(ServerMessage):
     """
 
     __slots__ = ("room", "user")
+    EVENT_NAME = "remove-room-member"
 
     def __init__(self, room=None, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2760,6 +2797,7 @@ class RoomMembershipGranted(ServerMessage):
     """
 
     __slots__ = ("room",)
+    EVENT_NAME = "room-membership-granted"
 
     def __init__(self, room=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2776,6 +2814,7 @@ class RoomMembershipRevoked(ServerMessage):
     """
 
     __slots__ = ("room",)
+    EVENT_NAME = "room-membership-revoked"
 
     def __init__(self, room=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2793,6 +2832,7 @@ class EnableRoomInvitations(ServerMessage):
     """
 
     __slots__ = ("enabled",)
+    EVENT_NAME = "enable-room-invitations"
 
     def __init__(self, enabled=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2813,7 +2853,8 @@ class ChangePassword(ServerMessage):
     """
 
     __slots__ = ("password",)
-    __excluded_attrs__ = {"password"}
+    EVENT_NAME = "change-password"
+    HIDDEN_FIELDS = {"password"}
 
     def __init__(self, password=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2837,6 +2878,7 @@ class AddRoomOperator(ServerMessage):
     """
 
     __slots__ = ("room", "user")
+    EVENT_NAME = "add-room-operator"
 
     def __init__(self, room=None, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2866,6 +2908,7 @@ class RemoveRoomOperator(ServerMessage):
     """
 
     __slots__ = ("room", "user")
+    EVENT_NAME = "remove-room-operator"
 
     def __init__(self, room=None, user=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2892,6 +2935,7 @@ class RoomOperatorshipGranted(ServerMessage):
     """
 
     __slots__ = ("room",)
+    EVENT_NAME = "room-operatorship-granted"
 
     def __init__(self, room=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2909,6 +2953,7 @@ class RoomOperatorshipRevoked(ServerMessage):
     """
 
     __slots__ = ("room",)
+    EVENT_NAME = "room-operatorship-revoked"
 
     def __init__(self, room=None, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -2928,6 +2973,7 @@ class RoomOperators(ServerMessage):
     """
 
     __slots__ = ("room", "operators")
+    EVENT_NAME = "room-operators"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -3007,6 +3053,7 @@ class GlobalRoomMessage(ServerMessage):
     """
 
     __slots__ = ("room", "user", "message", "message_type", "mention_type", "mention_keyword")
+    EVENT_NAME = "global-room-message"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -3062,6 +3109,7 @@ class ExcludedSearchPhrases(ServerMessage):
     """
 
     __slots__ = ("phrases",)
+    EVENT_NAME = "excluded-search-phrases"
 
     def __init__(self, *, msg_content=None):
         ServerMessage.__init__(self, msg_content)
@@ -3130,7 +3178,7 @@ class CantCreateRoom(ServerMessage):
 
 class PeerInitMessage(SlskMessage):
     __slots__ = ()
-    msg_type = MessageType.INIT
+    TYPE = MessageType.INIT
 
 
 class PierceFireWall(PeerInitMessage):
@@ -3199,7 +3247,7 @@ class PeerInit(PeerInitMessage):
 class PeerMessage(SlskMessage):
 
     __slots__ = ("username", "sock", "addr", "allowed_responses")
-    msg_type = MessageType.PEER
+    TYPE = MessageType.PEER
 
     def __init__(self, msg_content=None):
         SlskMessage.__init__(self, msg_content)
@@ -3259,6 +3307,7 @@ class SharedFileListRequest(PeerMessage):
     """
 
     __slots__ = ()
+    EVENT_NAME = "shared-file-list-request"
 
     def make_network_message(self):
         return b""
@@ -3277,7 +3326,8 @@ class SharedFileListResponse(PeerMessage):
 
     __slots__ = ("list", "unknown", "privatelist", "built", "permission_level",
                  "public_shares", "buddy_shares", "trusted_shares")
-    __excluded_attrs__ = {"list", "privatelist", "built"}
+    EVENT_NAME = "shared-file-list-response"
+    HIDDEN_FIELDS = {"list", "privatelist", "built"}
 
     def __init__(self, public_shares=None, buddy_shares=None, trusted_shares=None,
                  permission_level=None, *, msg_content=None):
@@ -3308,7 +3358,6 @@ class SharedFileListResponse(PeerMessage):
                     msg_list += shares[key]
 
         except Exception as error:
-            from pynicotine.logfacility import log
             msg_list = self.pack_uint32(0)
             log.add(_("Unable to read shares database. Please rescan your shares. Error: %s"), error)
 
@@ -3350,20 +3399,6 @@ class SharedFileListResponse(PeerMessage):
         self.built = zlib.compress(msg, ZLIB_COMPRESSION_LEVEL)
         return self.built
 
-    def parse_network_message(self):
-        decompressor = zlib.decompressobj()
-        max_uncompressed_size = 2147483648  # 2 GiB
-        self._message = memoryview(decompressor.decompress(self._message, max_uncompressed_size))
-
-        if not decompressor.unconsumed_tail:
-            self._parse_network_message()
-
-    def parse_local_message(self):
-        self._message = memoryview(self.make_network_message())
-        self._offset = 0
-
-        self.parse_network_message()
-
     def _parse_result_list(self):
         ndir = self.unpack_uint32()
 
@@ -3396,7 +3431,14 @@ class SharedFileListResponse(PeerMessage):
 
         return shares
 
-    def _parse_network_message(self):
+    def parse_network_message(self):
+        decompressor = zlib.decompressobj()
+        max_uncompressed_size = 2147483648  # 2 GiB total
+        self._message = memoryview(decompressor.decompress(self._message, max_uncompressed_size))
+
+        if not decompressor.eof:
+            raise ValueError("Compressed message invalid or too large")
+
         self.list = self._parse_result_list()
 
         if self.has_remaining_content():
@@ -3404,6 +3446,12 @@ class SharedFileListResponse(PeerMessage):
 
         if self.has_remaining_content():
             self.privatelist = self._parse_result_list()
+
+    def parse_local_message(self):
+        self._message = memoryview(self.make_network_message())
+        self._offset = 0
+
+        self.parse_network_message()
 
 
 class FileSearchRequest(PeerMessage):
@@ -3445,7 +3493,8 @@ class FileSearchResponse(PeerMessage):
 
     __slots__ = ("search_username", "token", "list", "privatelist", "freeulslots",
                  "ulspeed", "inqueue", "unknown")
-    __excluded_attrs__ = {"list", "privatelist"}
+    EVENT_NAME = "file-search-response"
+    HIDDEN_FIELDS = {"list", "privatelist"}
 
     def __init__(self, search_username=None, token=None, shares=None, freeulslots=None,
                  ulspeed=None, inqueue=None, private_shares=None, *, msg_content=None):
@@ -3481,39 +3530,6 @@ class FileSearchResponse(PeerMessage):
 
         return zlib.compress(msg, ZLIB_COMPRESSION_LEVEL)
 
-    def parse_network_message(self):
-        decompressor = zlib.decompressobj()
-        max_uncompressed_size = 134217728  # 128 MiB
-
-        self._offset = 0
-        self._message = memoryview(decompressor.decompress(self._message, 4))
-        self._offset = username_len = self.unpack_uint32()
-        self._message = memoryview(decompressor.decompress(decompressor.unconsumed_tail, username_len + 4))
-        self.token = self.unpack_uint32()
-
-        if self.token not in self.allowed_responses:
-            # Results are no longer accepted for this search token, stop parsing message
-            return
-
-        # Optimization: only decompress the rest of the message when needed
-        self._offset = 0
-        self._message = memoryview(decompressor.decompress(decompressor.unconsumed_tail, max_uncompressed_size))
-
-        if not decompressor.unconsumed_tail:
-            self._parse_remaining_network_message()
-
-    def _parse_remaining_network_message(self):
-        self.list = self._parse_result_list()
-        self.freeulslots = self.unpack_bool()
-        self.ulspeed = self.unpack_uint32()
-        self.inqueue = self.unpack_uint32()
-
-        if self.has_remaining_content():
-            self.unknown = self.unpack_uint32()
-
-        if self.has_remaining_content():
-            self.privatelist = self._parse_result_list()
-
     def _parse_result_list(self):
         nfiles = self.unpack_uint32()
 
@@ -3535,6 +3551,41 @@ class FileSearchResponse(PeerMessage):
 
         return results
 
+    def parse_network_message(self):
+        decompressor = zlib.decompressobj()
+        self._message = memoryview(decompressor.decompress(self._message, 4))
+
+        username_len = self.unpack_uint32()
+        max_uncompressed_size = 134217728 - username_len - 8  # 128 MiB total
+
+        if max_uncompressed_size <= 0:
+            raise ValueError("Compressed message too large")
+
+        self._offset = username_len
+        self._message = memoryview(decompressor.decompress(decompressor.unconsumed_tail, username_len + 4))
+        self.token = self.unpack_uint32()
+
+        if self.token not in self.allowed_responses:
+            return
+
+        # Optimization: only decompress the rest of the message when needed
+        self._offset = 0
+        self._message = memoryview(decompressor.decompress(decompressor.unconsumed_tail, max_uncompressed_size))
+
+        if not decompressor.eof:
+            raise ValueError("Compressed message invalid or too large")
+
+        self.list = self._parse_result_list()
+        self.freeulslots = self.unpack_bool()
+        self.ulspeed = self.unpack_uint32()
+        self.inqueue = self.unpack_uint32()
+
+        if self.has_remaining_content():
+            self.unknown = self.unpack_uint32()
+
+        if self.has_remaining_content():
+            self.privatelist = self._parse_result_list()
+
 
 class UserInfoRequest(PeerMessage):
     """Peer code 15.
@@ -3544,6 +3595,7 @@ class UserInfoRequest(PeerMessage):
     """
 
     __slots__ = ()
+    EVENT_NAME = "user-info-request"
 
     def make_network_message(self):
         return b""
@@ -3560,7 +3612,8 @@ class UserInfoResponse(PeerMessage):
     """
 
     __slots__ = ("descr", "pic", "totalupl", "queuesize", "slotsavail", "uploadallowed", "has_pic")
-    __excluded_attrs__ = {"pic"}
+    EVENT_NAME = "user-info-response"
+    HIDDEN_FIELDS = {"pic"}
 
     def __init__(self, descr=None, pic=None, totalupl=None, queuesize=None,
                  slotsavail=None, uploadallowed=None, *, msg_content=None):
@@ -3614,6 +3667,7 @@ class FolderContentsRequest(PeerMessage):
     """
 
     __slots__ = ("dir", "token", "legacy_client")
+    EVENT_NAME = "folder-contents-request"
 
     def __init__(self, directory=None, token=None, legacy_client=False, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3641,7 +3695,8 @@ class FolderContentsResponse(PeerMessage):
     """
 
     __slots__ = ("dir", "token", "list")
-    __excluded_attrs__ = {"list"}
+    EVENT_NAME = "folder-contents-response"
+    HIDDEN_FIELDS = {"list"}
 
     def __init__(self, directory=None, token=None, shares=None, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3649,18 +3704,40 @@ class FolderContentsResponse(PeerMessage):
         self.token = token
         self.list = shares
 
+    def make_network_message(self):
+        msg = bytearray()
+        msg += self.pack_uint32(self.token)
+        msg += self.pack_string(self.dir)
+
+        if self.list is not None:
+            msg += self.pack_uint32(1)
+            msg += self.pack_string(self.dir)
+
+            # We already saved the folder contents as a bytearray when scanning our shares
+            msg += self.list
+        else:
+            # No folder contents
+            msg += self.pack_uint32(0)
+
+        return zlib.compress(msg, ZLIB_COMPRESSION_LEVEL)
+
     def parse_network_message(self):
         decompressor = zlib.decompressobj()
-        max_uncompressed_size = 134217728  # 128 MiB
-
-        self._offset = 0
         message_bytes = decompressor.decompress(self._message, 8)
         self._message = memoryview(message_bytes)
+
         self.token = self.unpack_uint32()
         dir_len = self.unpack_uint32()
+        max_uncompressed_size = 134217728 - dir_len - 8  # 128 MiB total
+
+        if max_uncompressed_size <= 0:
+            raise ValueError("Compressed message too large")
+
+        if dir_len:
+            message_bytes += decompressor.decompress(decompressor.unconsumed_tail, dir_len)
+            self._message = memoryview(message_bytes)
 
         self._offset = 4  # Skip token
-        self._message = memoryview(message_bytes + decompressor.decompress(decompressor.unconsumed_tail, dir_len))
         self.dir = self.unpack_string()
 
         if self.username + self.dir not in self.allowed_responses:
@@ -3670,10 +3747,9 @@ class FolderContentsResponse(PeerMessage):
         self._offset = 0
         self._message = memoryview(decompressor.decompress(decompressor.unconsumed_tail, max_uncompressed_size))
 
-        if not decompressor.unconsumed_tail:
-            self._parse_remaining_network_message()
+        if not decompressor.eof:
+            raise ValueError("Compressed message invalid or too large")
 
-    def _parse_remaining_network_message(self):
         ndir = self.unpack_uint32()
         folders = {}
 
@@ -3699,23 +3775,6 @@ class FolderContentsResponse(PeerMessage):
 
         self.list = folders
 
-    def make_network_message(self):
-        msg = bytearray()
-        msg += self.pack_uint32(self.token)
-        msg += self.pack_string(self.dir)
-
-        if self.list is not None:
-            msg += self.pack_uint32(1)
-            msg += self.pack_string(self.dir)
-
-            # We already saved the folder contents as a bytearray when scanning our shares
-            msg += self.list
-        else:
-            # No folder contents
-            msg += self.pack_uint32(0)
-
-        return zlib.compress(msg, ZLIB_COMPRESSION_LEVEL)
-
 
 class TransferRequest(PeerMessage):
     """Peer code 40.
@@ -3732,6 +3791,7 @@ class TransferRequest(PeerMessage):
     """
 
     __slots__ = ("direction", "token", "file", "filesize")
+    EVENT_NAME = "transfer-request"
 
     def __init__(self, direction=None, token=None, file=None, filesize=None, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3775,6 +3835,7 @@ class TransferResponse(PeerMessage):
     """
 
     __slots__ = ("allowed", "token", "reason", "filesize")
+    EVENT_NAME = "transfer-response"
 
     def __init__(self, allowed=None, reason=None, token=None, filesize=None, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3837,6 +3898,7 @@ class QueueUpload(PeerMessage):
     """
 
     __slots__ = ("file", "legacy_client")
+    EVENT_NAME = "queue-upload"
 
     def __init__(self, file=None, legacy_client=False, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3858,6 +3920,7 @@ class PlaceInQueueResponse(PeerMessage):
     """
 
     __slots__ = ("filename", "place")
+    EVENT_NAME = "place-in-queue-response"
 
     def __init__(self, filename=None, place=None, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3886,6 +3949,7 @@ class UploadFailed(PeerMessage):
     """
 
     __slots__ = ("file",)
+    EVENT_NAME = "upload-failed"
 
     def __init__(self, file=None, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3907,6 +3971,7 @@ class UploadDenied(PeerMessage):
     """
 
     __slots__ = ("file", "reason")
+    EVENT_NAME = "upload-denied"
 
     def __init__(self, file=None, reason=None, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3933,6 +3998,7 @@ class PlaceInQueueRequest(PeerMessage):
     """
 
     __slots__ = ("file", "legacy_client")
+    EVENT_NAME = "place-in-queue-request"
 
     def __init__(self, file=None, legacy_client=False, *, msg_content=None):
         PeerMessage.__init__(self, msg_content)
@@ -3971,6 +4037,7 @@ class UnknownPeerMessage(PeerMessage):
     """
 
     __slots__ = ()
+    LOGGED = False
 
     def parse_network_message(self):
         # Empty message
@@ -3983,7 +4050,7 @@ class UnknownPeerMessage(PeerMessage):
 class FileMessage(SlskMessage):
 
     __slots__ = ("sock", "username")
-    msg_type = MessageType.FILE
+    TYPE = MessageType.FILE
 
     def __init__(self, msg_content=None, sock=None):
         SlskMessage.__init__(self, msg_content)
@@ -3998,6 +4065,7 @@ class FileTransferInit(FileMessage):
     """
 
     __slots__ = ("token", "is_outgoing")
+    EVENT_NAME = "file-transfer-init"
 
     def __init__(self, token=None, is_outgoing=False, *, msg_content=None):
         FileMessage.__init__(self, msg_content)
@@ -4050,7 +4118,7 @@ class FileOffset(FileMessage):
 class DistribMessage(SlskMessage):
 
     __slots__ = ("sock", "username")
-    msg_type = MessageType.DISTRIBUTED
+    TYPE = MessageType.DISTRIBUTED
 
     def __init__(self, msg_content=None):
         SlskMessage.__init__(self, msg_content)
@@ -4092,6 +4160,8 @@ class DistribSearch(DistribMessage):
     """
 
     __slots__ = ("identifier", "search_username", "token", "searchterm")
+    EVENT_NAME = "file-search-request-distributed"
+    LOGGED = False
 
     def __init__(self, *, msg_content=None):
         DistribMessage.__init__(self, msg_content)
@@ -4216,6 +4286,7 @@ class DistribEmbeddedMessage(DistribMessage):
     """
 
     __slots__ = ("distrib_code", "distrib_message")
+    LOGGED = False
 
     def __init__(self, *, msg_content=None):
         DistribMessage.__init__(self, msg_content)
@@ -4231,71 +4302,6 @@ class DistribEmbeddedMessage(DistribMessage):
             self._offset += 3
         self.distrib_code = self.unpack_uint8()
         self.distrib_message = self._message[self._offset:]
-
-
-# Message Events #
-
-
-NETWORK_MESSAGE_EVENTS = {
-    AddRoomMember: "add-room-member",
-    AddRoomOperator: "add-room-operator",
-    AdminMessage: "admin-message",
-    ChangePassword: "change-password",
-    CheckPrivileges: "check-privileges",
-    ConnectToPeer: "connect-to-peer",
-    DistribSearch: "file-search-request-distributed",
-    EnableRoomInvitations: "enable-room-invitations",
-    ExcludedSearchPhrases: "excluded-search-phrases",
-    FileSearch: "file-search-request-server",
-    FileSearchResponse: "file-search-response",
-    FileTransferInit: "file-transfer-init",
-    FolderContentsRequest: "folder-contents-request",
-    FolderContentsResponse: "folder-contents-response",
-    GetPeerAddress: "peer-address",
-    GetUserStats: "user-stats",
-    GetUserStatus: "user-status",
-    GlobalRecommendations: "global-recommendations",
-    GlobalRoomMessage: "global-room-message",
-    ItemRecommendations: "item-recommendations",
-    ItemSimilarUsers: "item-similar-users",
-    JoinRoom: "join-room",
-    LeaveRoom: "leave-room",
-    Login: "server-login",
-    MessageUser: "message-user",
-    PlaceInQueueRequest: "place-in-queue-request",
-    PlaceInQueueResponse: "place-in-queue-response",
-    PrivilegedUsers: "privileged-users",
-    QueueUpload: "queue-upload",
-    Recommendations: "recommendations",
-    RemoveRoomMember: "remove-room-member",
-    RemoveRoomOperator: "remove-room-operator",
-    RoomList: "room-list",
-    RoomMembers: "room-members",
-    RoomMembershipGranted: "room-membership-granted",
-    RoomMembershipRevoked: "room-membership-revoked",
-    RoomOperators: "room-operators",
-    RoomOperatorshipGranted: "room-operatorship-granted",
-    RoomOperatorshipRevoked: "room-operatorship-revoked",
-    RoomTickerAdded: "room-ticker-added",
-    RoomTickerRemoved: "room-ticker-removed",
-    RoomTickers: "room-tickers",
-    SayChatroom: "say-chat-room",
-    SharedFileListRequest: "shared-file-list-request",
-    SharedFileListResponse: "shared-file-list-response",
-    SimilarUsers: "similar-users",
-    TransferRequest: "transfer-request",
-    TransferResponse: "transfer-response",
-    UploadDenied: "upload-denied",
-    UploadFailed: "upload-failed",
-    UploadFile: "file-upload-progress",
-    UserInfoRequest: "user-info-request",
-    UserInfoResponse: "user-info-response",
-    UserInterests: "user-interests",
-    UserJoinedRoom: "user-joined-room",
-    UserLeftRoom: "user-left-room",
-    WatchUser: "watch-user",
-    WishlistInterval: "set-wishlist-interval"
-}
 
 
 # Message Codes #
