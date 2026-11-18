@@ -275,16 +275,16 @@ class Buddies:
 
     def on_row_activated(self, _list_view, _iterator, column_id):
 
-        user = self.get_selected_username()
+        username = self.get_selected_username()
 
-        if user is None:
+        if username is None:
             return
 
         if column_id == "comments":
             self.on_add_note()
             return
 
-        core.privatechat.show_user(user)
+        core.privatechat.show_user(username)
 
     def on_popup_menu(self, menu, _widget):
 
@@ -294,38 +294,39 @@ class Buddies:
 
     def user_status(self, msg):
 
-        iterator = self.list_view.iterators.get(msg.user)
+        iterator = self.list_view.iterators.get(msg.username)
 
         if iterator is None:
             return
 
-        status = msg.status
-        status_icon_name = USER_STATUS_ICON_NAMES.get(status)
+        status_icon_name = USER_STATUS_ICON_NAMES.get(msg.status, "")
 
-        if status_icon_name and status_icon_name != self.list_view.get_row_value(iterator, "status"):
+        if status_icon_name != self.list_view.get_row_value(iterator, "status"):
             self.list_view.set_row_value(iterator, "status", status_icon_name)
 
     def user_stats(self, msg):
 
-        iterator = self.list_view.iterators.get(msg.user)
+        iterator = self.list_view.iterators.get(msg.username)
 
         if iterator is None:
             return
 
-        speed = msg.avgspeed or 0
-        num_files = msg.files or 0
-        num_folders = msg.dirs or 0
-        h_num_files = humanize(num_files)
+        stats = msg.stats
+        upload_speed = stats.upload_speed or 0
+        num_files = stats.num_files or 0
+        num_folders = stats.num_folders or 0
         column_ids = []
         column_values = []
 
-        if speed != self.list_view.get_row_value(iterator, "speed_data"):
-            h_speed = human_speed(speed) if speed > 0 else ""
+        if upload_speed != self.list_view.get_row_value(iterator, "speed_data"):
+            h_upload_speed = human_speed(upload_speed) if upload_speed > 0 else ""
 
             column_ids.extend(("speed", "speed_data"))
-            column_values.extend((h_speed, speed))
+            column_values.extend((h_upload_speed, upload_speed))
 
-        if h_num_files != self.list_view.get_row_value(iterator, "files"):
+        if num_files != self.list_view.get_row_value(iterator, "files_data"):
+            h_num_files = humanize(num_files)
+
             column_ids.extend(("files", "files_data"))
             column_values.extend((h_num_files, num_files))
 
@@ -336,7 +337,7 @@ class Buddies:
         if column_ids:
             self.list_view.set_row_values(iterator, column_ids, column_values)
 
-    def add_buddy(self, user, user_data, select_row=True):
+    def add_buddy(self, username, user_data, select_row=True):
 
         status = user_data.status
         country_code = user_data.country
@@ -344,19 +345,20 @@ class Buddies:
         if country_code:
             country_code = country_code.replace("flag_", "")
 
-        stats = core.users.watched.get(user)
+        watched_user = core.users.watched.get(username)
 
-        if stats is not None:
-            speed = stats.upload_speed or 0
-            files = stats.files
-            folders = stats.folders
+        if watched_user is not None:
+            stats = watched_user.stats
+            upload_speed = stats.upload_speed or 0
+            num_files = stats.num_files
+            num_folders = stats.num_folders
         else:
-            speed = 0
-            files = None
-            folders = None
+            upload_speed = 0
+            num_files = None
+            num_folders = None
 
-        h_speed = human_speed(speed) if speed > 0 else ""
-        h_files = humanize(files) if files is not None else ""
+        h_upload_speed = human_speed(upload_speed) if upload_speed > 0 else ""
+        h_num_files = humanize(num_files) if num_files is not None else ""
         last_seen = UINT64_LIMIT
         h_last_seen = ""
 
@@ -373,17 +375,17 @@ class Buddies:
         self.list_view.add_row([
             USER_STATUS_ICON_NAMES.get(status, ""),
             get_flag_icon_name(country_code),
-            str(user),
-            h_speed,
-            h_files,
+            str(username),
+            h_upload_speed,
+            h_num_files,
             bool(user_data.is_trusted),
             bool(user_data.notify_status),
             bool(user_data.is_prioritized),
             str(h_last_seen),
             str(user_data.note),
-            speed,
-            files or 0,
-            folders or 0,
+            upload_speed,
+            num_files or 0,
+            num_folders or 0,
             last_seen
         ], select_row=select_row)
 
@@ -392,7 +394,7 @@ class Buddies:
             self.window.userbrowse.userbrowse_combobox,
             self.window.userinfo.userinfo_combobox
         ):
-            combobox.append(str(user))
+            combobox.append(str(username))
 
         self.update_visible()
 
@@ -413,37 +415,37 @@ class Buddies:
         ):
             combobox.remove_id(user)
 
-    def buddy_note(self, user, note):
+    def buddy_note(self, username, note):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is not None:
             self.list_view.set_row_value(iterator, "comments", note)
 
-    def buddy_trusted(self, user, trusted):
+    def buddy_trusted(self, username, trusted):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is not None:
             self.list_view.set_row_value(iterator, "trusted", trusted)
 
-    def buddy_notify(self, user, notify):
+    def buddy_notify(self, username, notify):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is not None:
             self.list_view.set_row_value(iterator, "notify", notify)
 
-    def buddy_prioritized(self, user, prioritized):
+    def buddy_prioritized(self, username, prioritized):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is not None:
             self.list_view.set_row_value(iterator, "privileged", prioritized)
 
-    def buddy_last_seen(self, user, online):
+    def buddy_last_seen(self, username, online):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is None:
             return
@@ -461,9 +463,9 @@ class Buddies:
             values=[h_last_seen, last_seen]
         )
 
-    def user_country(self, user, country_code):
+    def user_country(self, username, country_code):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is None:
             return
@@ -489,28 +491,28 @@ class Buddies:
 
     def on_trusted(self, list_view, iterator):
 
-        user = list_view.get_row_value(iterator, "user")
+        username = list_view.get_row_value(iterator, "user")
         value = list_view.get_row_value(iterator, "trusted")
 
-        core.buddies.set_buddy_trusted(user, not value)
+        core.buddies.set_buddy_trusted(username, not value)
 
     def on_notify(self, list_view, iterator):
 
-        user = list_view.get_row_value(iterator, "user")
+        username = list_view.get_row_value(iterator, "user")
         value = list_view.get_row_value(iterator, "notify")
 
-        core.buddies.set_buddy_notify(user, not value)
+        core.buddies.set_buddy_notify(username, not value)
 
     def on_prioritized(self, list_view, iterator):
 
-        user = list_view.get_row_value(iterator, "user")
+        username = list_view.get_row_value(iterator, "user")
         value = list_view.get_row_value(iterator, "privileged")
 
-        core.buddies.set_buddy_prioritized(user, not value)
+        core.buddies.set_buddy_prioritized(username, not value)
 
-    def on_add_note_response(self, dialog, _response_id, user):
+    def on_add_note_response(self, dialog, _response_id, username):
 
-        iterator = self.list_view.iterators.get(user)
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is None:
             return
@@ -520,12 +522,12 @@ class Buddies:
         if note is None:
             return
 
-        core.buddies.set_buddy_note(user, note)
+        core.buddies.set_buddy_note(username, note)
 
     def on_add_note(self, *_args):
 
-        user = self.get_selected_username()
-        iterator = self.list_view.iterators.get(user)
+        username = self.get_selected_username()
+        iterator = self.list_view.iterators.get(username)
 
         if iterator is None:
             return
@@ -535,10 +537,10 @@ class Buddies:
         EntryDialog(
             application=self.window.application,
             title=_("Add User Note"),
-            message=_("Add a note about user %s:") % user,
+            message=_("Add a note about user %s:") % username,
             action_button_label=_("_Add"),
             callback=self.on_add_note_response,
-            callback_data=user,
+            callback_data=username,
             default=note
         ).present()
 

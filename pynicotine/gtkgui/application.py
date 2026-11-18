@@ -493,10 +493,10 @@ class Application:
         except Exception as error:
             log.add(_("Unable to show notification: %s"), error)
 
-    def _show_chatroom_notification(self, room, message, title=None, high_priority=False):
+    def _show_chatroom_notification(self, room_name, message, title=None, high_priority=False):
 
         self._show_notification(
-            message, title, action="app.chatroom-notification-activated", action_target=room,
+            message, title, action="app.chatroom-notification-activated", action_target=room_name,
             high_priority=high_priority
         )
 
@@ -507,10 +507,10 @@ class Application:
             high_priority=high_priority
         )
 
-    def _show_private_chat_notification(self, user, message, title=None):
+    def _show_private_chat_notification(self, username, message, title=None):
 
         self._show_notification(
-            message, title, action="app.private-chat-notification-activated", action_target=user,
+            message, title, action="app.private-chat-notification-activated", action_target=username,
             high_priority=True
         )
 
@@ -639,7 +639,7 @@ class Application:
         ).present()
 
     def on_user_status(self, msg):
-        if msg.user == core.users.login_username:
+        if msg.username == core.users.login_username:
             self._update_user_status()
 
     # Actions #
@@ -786,15 +786,15 @@ class Application:
 
         self.activate()
 
-        room = room_variant.get_string()
-        core.chatrooms.show_room(room)
+        room_name = room_variant.get_string()
+        core.chatrooms.show_room(room_name)
 
     def on_private_chat_notification_activated(self, _action, user_variant):
 
         self.activate()
 
-        user = user_variant.get_string()
-        core.privatechat.show_user(user)
+        username = user_variant.get_string()
+        core.privatechat.show_user(username)
 
     def on_search_notification_activated(self, _action, search_token_variant):
 

@@ -1,24 +1,31 @@
 # SPDX-FileCopyrightText: 2021-2026 Nicotine+ Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import os
 import time
 
 from pynicotine.config import config
 from pynicotine.core import core
-from pynicotine.events import events
-from pynicotine.events import StopEventPropagation
+from pynicotine.events import StopEventPropagation, events
 from pynicotine.logfacility import log
 from pynicotine.shares import PermissionLevel
-from pynicotine.slskmessages import AddAllowedResponse
-from pynicotine.slskmessages import ConnectionType
-from pynicotine.slskmessages import RemoveAllowedResponse
-from pynicotine.slskmessages import UserInfoRequest
-from pynicotine.slskmessages import UserInfoResponse
-from pynicotine.slskmessages import UserInterests
-from pynicotine.slskmessages import UserStatus
-from pynicotine.utils import encode_path
-from pynicotine.utils import unescape
+from pynicotine.slskmessages import (
+    AddAllowedResponse,
+    ConnectionType,
+    Login,
+    RemoveAllowedResponse,
+    ServerDisconnect,
+    UserInfoRequest,
+    UserInfoResponse,
+    UserInterests,
+    UserStatus
+)
+from pynicotine.utils import (
+    encode_path,
+    unescape
+)
 
 
 class UserInfo:
@@ -40,10 +47,10 @@ class UserInfo:
         ):
             events.connect(event_name, callback)
 
-    def _quit(self):
+    def _quit(self) -> None:
         self.remove_all_users()
 
-    def _server_login(self, msg):
+    def _server_login(self, msg: Login) -> None:
 
         if not msg.success:
             return
@@ -51,10 +58,12 @@ class UserInfo:
         for username in self.users:
             core.users.watch_user(username, context="userinfo")  # Get notified of user status
 
-    def _server_disconnect(self, _msg):
+    def _server_disconnect(self, _msg: ServerDisconnect) -> None:
         self._requested_info_times.clear()
 
-    def _get_user_info_response(self, requesting_username=None, requesting_ip_address=None):
+    def _get_user_info_response(
+        self, requesting_username: str | None = None, requesting_ip_address: str | None = None
+    ) -> UserInfoResponse:
 
         if requesting_username is not None and requesting_ip_address is not None:
             permission_level, reject_reason = core.shares.check_user_permission(
@@ -65,40 +74,41 @@ class UserInfo:
 
         if permission_level == PermissionLevel.BANNED:
             # Hide most details from banned users
-            pic = None
-            descr = ""
-            totalupl = queuesize = uploadallowed = 0
-            slotsavail = False
+            picture = None
+            description = ""
+            num_upload_slots = num_queued_uploads = upload_permission = 0
+            slot_available = False
 
             if reject_reason:
-                descr = f"You are not allowed to download my shared files.\nReason: {reject_reason}"
+                description = f"You are not allowed to download my shared files.\nReason: {reject_reason}"
         else:
             try:
                 with open(encode_path(os.path.expandvars(config.sections["userinfo"]["pic"])), "rb") as file_handle:
-                    pic = file_handle.read()
+                    picture = file_handle.read()
 
             except Exception:
-                pic = None
+                picture = None
 
-            descr = unescape(config.sections["userinfo"]["descr"])
+            description = unescape(config.sections["userinfo"]["descr"])
 
-            totalupl = core.uploads.get_total_uploads_allowed()
-            queuesize = core.uploads.get_upload_queue_size(requesting_username)
-            slotsavail = core.uploads.is_new_upload_accepted()
+            num_upload_slots = core.uploads.get_total_uploads_allowed()
+            num_queued_uploads = core.uploads.get_upload_queue_size(requesting_username)
+            slot_available = core.uploads.is_new_upload_accepted()
 
             if config.sections["transfers"]["remotedownloads"]:
-                uploadallowed = config.sections["transfers"]["uploadallowed"]
+                upload_permission = config.sections["transfers"]["uploadallowed"]
             else:
-                uploadallowed = 0
+                upload_permission = 0
 
         msg = UserInfoResponse(
-            descr=descr, pic=pic, totalupl=totalupl, queuesize=queuesize, slotsavail=slotsavail,
-            uploadallowed=uploadallowed
+            description=description, picture=picture, num_upload_slots=num_upload_slots,
+            num_queued_uploads=num_queued_uploads, slot_available=slot_available,
+            upload_permission=upload_permission
         )
         msg.username = core.users.login_username or config.sections["server"]["login"]
         return msg
 
-    def show_user(self, username=None, refresh=False, switch_page=True):
+    def show_user(self, username: str | None = None, refresh: bool = False, switch_page: bool = True) -> None:
 
         local_username = core.users.login_username or config.sections["server"]["login"]
 
@@ -113,7 +123,7 @@ class UserInfo:
             self.users.add(username)
             refresh = True
 
-        events.emit("user-info-show-user", user=username, refresh=refresh, switch_page=switch_page)
+        events.emit("user-info-show-user", username, refresh=refresh, switch_page=switch_page)
 
         if not refresh:
             return
@@ -137,19 +147,22 @@ class UserInfo:
         core.send_message_to_network_thread(AddAllowedResponse(UserInfoResponse, username))
         core.send_message_to_peer(username, UserInfoRequest())
 
-    def remove_user(self, username):
+    def remove_user(self, username: str) -> None:
+
+        if username not in self.users:
+            return
 
         self.users.remove(username)
         core.send_message_to_network_thread(RemoveAllowedResponse(UserInfoResponse, username))
         core.users.unwatch_user(username, context="userinfo")
         events.emit("user-info-remove-user", username)
 
-    def remove_all_users(self):
+    def remove_all_users(self) -> None:
         for username in self.users.copy():
             self.remove_user(username)
 
     @staticmethod
-    def save_user_picture(file_path, picture_bytes):
+    def save_user_picture(file_path: str, picture_bytes: bytes) -> None:
 
         try:
             with open(encode_path(file_path), "wb") as file_handle:
@@ -163,7 +176,7 @@ class UserInfo:
                 "error": error
             })
 
-    def _peer_connection_error(self, username, conn_type, msgs, is_offline=False):
+    def _peer_connection_error(self, username: str, conn_type: ConnectionType, msgs, is_offline: bool = False) -> None:
 
         if not msgs:
             return
@@ -177,7 +190,7 @@ class UserInfo:
                 events.emit("user-info-failed", username, is_offline)
                 break
 
-    def _user_info_request(self, msg):
+    def _user_info_request(self, msg: UserInfoRequest) -> None:
         """Peer code 15."""
 
         username = msg.username
@@ -190,10 +203,10 @@ class UserInfo:
             raise StopEventPropagation()
 
         self._requested_info_times[username] = request_time
-        msg = self._get_user_info_response(username, ip_address)
+        response_msg = self._get_user_info_response(username, ip_address)
 
         log.add(_("User %(user)s is viewing your profile"), {"user": username})
-        core.send_message_to_peer(username, msg)
+        core.send_message_to_peer(username, response_msg)
 
-    def _user_info_response(self, msg):
+    def _user_info_response(self, msg: UserInfoResponse) -> None:
         core.send_message_to_network_thread(RemoveAllowedResponse(UserInfoResponse, msg.username))

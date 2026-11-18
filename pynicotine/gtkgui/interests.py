@@ -442,17 +442,23 @@ class Interests:
             widget.clear()
             widget.freeze()
 
-        for thing, rating in recommendations:
-            if thing not in self.likes_list_view.iterators:
-                self.add_like_combobox.append(thing)
+        for recommendation in recommendations:
+            item = recommendation.item
+            rating = recommendation.rating
 
-            self.recommendations_list_view.add_row([humanize(rating), thing, rating], select_row=False)
+            if item not in self.likes_list_view.iterators:
+                self.add_like_combobox.append(item)
 
-        for thing, rating in unrecommendations:
-            if thing not in self.dislikes_list_view.iterators:
-                self.add_dislike_combobox.append(thing)
+            self.recommendations_list_view.add_row([humanize(rating), item, rating], select_row=False)
 
-            self.recommendations_list_view.add_row([humanize(rating), thing, rating], select_row=False)
+        for unrecommendation in unrecommendations:
+            item = unrecommendation.item
+            rating = unrecommendation.rating
+
+            if item not in self.dislikes_list_view.iterators:
+                self.add_dislike_combobox.append(item)
+
+            self.recommendations_list_view.add_row([humanize(rating), item, rating], select_row=False)
 
         for widget in widgets:
             widget.unfreeze()
@@ -470,7 +476,7 @@ class Interests:
         self.show_recommendations(always_global=True)
 
     def item_recommendations(self, msg):
-        self.set_recommendations(msg.recommendations, msg.unrecommendations, msg.thing)
+        self.set_recommendations(msg.recommendations, msg.unrecommendations, msg.item)
 
     def set_similar_users(self, users, item=None):
 
@@ -484,32 +490,35 @@ class Interests:
 
         for index, similar_user in enumerate(reversed(users)):
             username = similar_user.username
-            status = core.users.statuses.get(username, UserStatus.OFFLINE)
-            country_code = core.users.countries.get(username, "")
-            stats = core.users.watched.get(username)
+            watched_user = core.users.watched.get(username)
             rating = index + (1000 * (similar_user.rating or 0))  # Preserve default sort order
 
-            if stats is not None:
-                speed = stats.upload_speed or 0
-                files = stats.files or 0
-                folders = stats.folders or 0
+            if watched_user is not None:
+                stats = watched_user.stats
+                status = stats.status or UserStatus.OFFLINE
+                upload_speed = stats.upload_speed or 0
+                num_files = stats.num_files or 0
+                num_folders = stats.num_folders or 0
+                country_code = stats.country_code
             else:
-                speed = 0
-                files = 0
-                folders = 0
+                status = UserStatus.OFFLINE
+                upload_speed = 0
+                num_files = 0
+                num_folders = 0
+                country_code = ""
 
-            h_speed = human_speed(speed) if speed > 0 else ""
-            h_files = humanize(files)
+            h_upload_speed = human_speed(upload_speed) if upload_speed > 0 else ""
+            h_num_files = humanize(num_files)
 
             self.similar_users_list_view.add_row([
-                USER_STATUS_ICON_NAMES[status],
+                USER_STATUS_ICON_NAMES.get(status, ""),
                 get_flag_icon_name(country_code),
                 username,
-                h_speed,
-                h_files,
-                speed,
-                files,
-                folders,
+                h_upload_speed,
+                h_num_files,
+                upload_speed,
+                num_files,
+                num_folders,
                 rating
             ], select_row=False)
 
@@ -519,11 +528,11 @@ class Interests:
         self.set_similar_users(msg.users)
 
     def item_similar_users(self, msg):
-        self.set_similar_users(msg.users, msg.thing)
+        self.set_similar_users(msg.users, msg.item)
 
-    def user_country(self, user, country_code):
+    def user_country(self, username, country_code):
 
-        iterator = self.similar_users_list_view.iterators.get(user)
+        iterator = self.similar_users_list_view.iterators.get(username)
 
         if iterator is None:
             return
@@ -535,34 +544,35 @@ class Interests:
 
     def user_status(self, msg):
 
-        iterator = self.similar_users_list_view.iterators.get(msg.user)
+        iterator = self.similar_users_list_view.iterators.get(msg.username)
 
         if iterator is None:
             return
 
-        status_icon_name = USER_STATUS_ICON_NAMES.get(msg.status)
+        status_icon_name = USER_STATUS_ICON_NAMES.get(msg.status, "")
 
-        if status_icon_name and status_icon_name != self.similar_users_list_view.get_row_value(iterator, "status"):
+        if status_icon_name != self.similar_users_list_view.get_row_value(iterator, "status"):
             self.similar_users_list_view.set_row_value(iterator, "status", status_icon_name)
 
     def user_stats(self, msg):
 
-        iterator = self.similar_users_list_view.iterators.get(msg.user)
+        iterator = self.similar_users_list_view.iterators.get(msg.username)
 
         if iterator is None:
             return
 
-        speed = msg.avgspeed or 0
-        num_files = msg.files or 0
-        num_folders = msg.dirs or 0
+        stats = msg.stats
+        upload_speed = stats.upload_speed or 0
+        num_files = stats.num_files or 0
+        num_folders = stats.num_folders or 0
         column_ids = []
         column_values = []
 
-        if speed != self.similar_users_list_view.get_row_value(iterator, "speed_data"):
-            h_speed = human_speed(speed) if speed > 0 else ""
+        if upload_speed != self.similar_users_list_view.get_row_value(iterator, "speed_data"):
+            h_upload_speed = human_speed(upload_speed) if upload_speed > 0 else ""
 
             column_ids.extend(("speed", "speed_data"))
-            column_values.extend((h_speed, speed))
+            column_values.extend((h_upload_speed, upload_speed))
 
         if num_files != self.similar_users_list_view.get_row_value(iterator, "files_data"):
             h_num_files = humanize(num_files)
@@ -610,16 +620,16 @@ class Interests:
     def on_popup_ru_menu(self, menu, *_args):
 
         for iterator in self.similar_users_list_view.get_selected_rows():
-            user = self.similar_users_list_view.get_row_value(iterator, "user")
+            username = self.similar_users_list_view.get_row_value(iterator, "user")
 
-            menu.set_user(user)
+            menu.set_user(username)
             menu.toggle_user_items()
             return
 
     def on_ru_row_activated(self, *_args):
 
         for iterator in self.similar_users_list_view.get_selected_rows():
-            user = self.similar_users_list_view.get_row_value(iterator, "user")
+            username = self.similar_users_list_view.get_row_value(iterator, "user")
 
-            core.userinfo.show_user(user)
+            core.userinfo.show_user(username)
             return

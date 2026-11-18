@@ -200,7 +200,7 @@ class Download(Dialog):
             if username + file_path in self.tree_view.iterators:
                 continue
 
-            folder_path, _separator, file_name = file_path.rpartition("\\")
+            folder_path, _separator, basename = file_path.rpartition("\\")
             folder_path_parent, _separator, folder_name = folder_path.rpartition("\\")
             parent_iterator_data = self.parent_iterators.get(username + folder_path)
 
@@ -256,7 +256,7 @@ class Download(Dialog):
             parent_iterator, child_iterators = self.parent_iterators[username + folder_path]
             iterator = self.tree_view.add_row(
                 [
-                    file_name,
+                    basename,
                     "",
                     human_size(size),
                     True,
@@ -325,8 +325,8 @@ class Download(Dialog):
 
             username = self.tree_view.get_row_value(iterator, "user_data")
             folder_path = self.tree_view.get_row_value(iterator, "folder_path_data")
-            file_name = self.tree_view.get_row_value(iterator, "name")
-            file_path = "\\".join([folder_path, file_name])
+            basename = self.tree_view.get_row_value(iterator, "name")
+            file_path = "\\".join([folder_path, basename])
             size = self.tree_view.get_row_value(iterator, "size_data")
             file_attributes = self.tree_view.get_row_value(iterator, "file_attributes_data")
 
@@ -421,7 +421,7 @@ class Download(Dialog):
 
     def folder_contents_response(self, msg):
 
-        if msg.dir is None:
+        if msg.folder_path is None:
             return
 
         username = msg.username
@@ -429,36 +429,38 @@ class Download(Dialog):
         if username not in self.pending_folders:
             return
 
-        if msg.dir not in self.pending_folders[username]:
+        if msg.folder_path not in self.pending_folders[username]:
             return
 
         self.tree_view.freeze()
 
         selected = True
 
-        for folder_path, files in msg.list.items():
-            if folder_path != msg.dir:
+        for folder_path, files in msg.folders.items():
+            if folder_path != msg.folder_path:
                 continue
 
             parent_iterator, child_iterators = self.parent_iterators[username + folder_path]
             unselected_parent = False
 
-            for _code, file_name, size, _ext, file_attributes, *_unused in reversed(files):
-                file_path = "\\".join([folder_path, file_name])
+            for file_data in reversed(files):
+                basename = file_data.path
+                file_path = "\\".join([folder_path, basename])
+                size = file_data.size
 
                 if username + file_path in self.tree_view.iterators:
                     continue
 
                 iterator = self.tree_view.add_row(
                     [
-                        file_name,
+                        basename,
                         "",
                         human_size(size),
                         selected,
                         username,
                         folder_path,
                         size,
-                        file_attributes,
+                        file_data.attributes,
                         False,
                         username + file_path
                     ],
@@ -489,8 +491,8 @@ class Download(Dialog):
         if not self.pending_folders:
             self.set_finished()
 
-        elif not msg.list:
-            self.set_failed(username, msg.dir)
+        elif not msg.folders:
+            self.set_failed(username, msg.folder_path)
 
         self.tree_view.unfreeze()
 
