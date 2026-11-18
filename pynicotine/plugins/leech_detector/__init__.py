@@ -1,289 +1,172 @@
-#
-# Leech Detector Plugin for Nicotine+
-# GNU GENERAL PUBLIC LICENSE Version 3
-#
-
-#
-# Leech Detector Plugin for Nicotine+
-# GNU GENERAL PUBLIC LICENSE Version 3
-#
-
-import time
-import threading
-
-# Guard PyGObject imports so linters/CI environments don't fail builds
-try:
-    from gi.repository import GLib
-except ImportError:
-    GLib = None
+# SPDX-FileCopyrightText: 2020-2026 Nicotine+ Contributors
+# SPDX-FileCopyrightText: 2011 quinox <quinox@users.sf.net>
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 from pynicotine.pluginsystem import BasePlugin
-from pynicotine.utils import human_size
-
-GB_IN_BYTES = 1024 ** 3
-AUTO_MESSAGE_PREFIX = "[Auto-Message] "
 
 
 class Plugin(BasePlugin):
 
+    PLACEHOLDERS = {
+        "%files%": "num_files",
+        "%folders%": "num_folders"
+    }
+
     def __init__(self, *args, **kwargs):
+
         super().__init__(*args, **kwargs)
 
         self.settings = {
-            "open_private_chat": False,
-            "auto_open_browse": True,
-            "keep_browse_open": True,
-            "browse_delay_seconds": 2.0,
-
-            "no_files_ban": True,
-            "no_files_pm": True,
-            "no_files_message": "You need shared files to download from me",
-
-            "all_privates_ban": True,
-            "all_privates_pm": True,
-            "all_privates_message": "You cannot download from me when your files are all private",
-
-            "empty_folders_ban": True,
-            "empty_folders_pm": True,
-            "empty_folders_message": "You cannot download from me when your shared folders are empty",
-
-            "num_files": 10,
-            "num_files_ban": False,
-            "num_files_pm": False,
-            "num_files_message": "Please consider adding more shared files",
-
-            "num_folders": 10,
-            "num_folders_ban": False,
-            "num_folders_pm": False,
-            "num_folders_message": "Please consider having more shared folders",
-
-            "share_size": 10,
-            "share_size_unit": "GB",
-            "share_size_ban": False,
-            "share_size_pm": False,
-            "share_size_message": "You are not sharing enough media",
-
-            "min_public_percent": 80,
-            "min_public_gib": 50,
-            "size_ratio_ban": True,
-            "size_ratio_pm": True,
-            "size_ratio_message": "Your public share is too small or too much is locked/private. Please share more openly.",
+            "message": "Please consider sharing more files if you would like to download from me again. Thanks :)",
+            "open_private_chat": True,
+            "num_files": 1,
+            "num_folders": 1,
+            "detected_leechers": []
         }
-
         self.metasettings = {
-            "open_private_chat": {"description": "Open private chat tabs when sending messages?", "type": "bool"},
-            "auto_open_browse": {"description": "Automatically open the user's Browse window when they queue?", "type": "bool"},
-            "keep_browse_open": {"description": "Keep the browse window open and focused", "type": "bool"},
-            "browse_delay_seconds": {"description": "Delay (seconds) before opening browse window:", "type": "float", "minimum": 0.5, "maximum": 5.0},
-
-            "no_files_ban": {"description": "Ban users with 0 files/folders shared?", "type": "bool"},
-            "no_files_pm": {"description": "Send message to users with 0 shares?", "type": "bool"},
-            "no_files_message": {"type": "string"},
-
-            "all_privates_ban": {"description": "Ban users with all shared folders locked?", "type": "bool"},
-            "all_privates_pm": {"description": "Send a message to users with all shares locked?", "type": "bool"},
-            "all_privates_message": {"type": "string"},
-
-            "empty_folders_ban": {"description": "Ban users with no files (only empty shared folders)?", "type": "bool"},
-            "empty_folders_pm": {"description": "Send a message to users with no files?", "type": "bool"},
-            "empty_folders_message": {"type": "string"},
-
-            "num_files": {"description": "Minimum number of shared files required:", "type": "int", "minimum": 0},
-            "num_files_ban": {"description": "Apply a ban for file counts below minimum?", "type": "bool"},
-            "num_files_pm": {"description": "Send a message to users below file threshold?", "type": "bool"},
-            "num_files_message": {"type": "string"},
-
-            "num_folders": {"description": "Minimum number of shared folders required:", "type": "int", "minimum": 0},
-            "num_folders_ban": {"description": "Apply a ban for folder counts below minimum?", "type": "bool"},
-            "num_folders_pm": {"description": "Send a message to users below folder threshold?", "type": "bool"},
-            "num_folders_message": {"type": "string"},
-
-            "share_size": {"description": "Minimum total share size required:", "type": "int", "minimum": 0, "maximum": 1000},
-            "share_size_unit": {"description": "Unit of measurement:", "type": "dropdown", "options": ("MB", "GB")},
-            "share_size_ban": {"description": "Apply a ban for total share sizes below minimum?", "type": "bool"},
-            "share_size_pm": {"description": "Send a message about total share sizes?", "type": "bool"},
-            "share_size_message": {"type": "string"},
-
-            "min_public_percent": {"description": "Minimum % of total share that must be PUBLIC (70-90 recommended):", "type": "int", "minimum": 0, "maximum": 100},
-            "min_public_gib": {"description": "Minimum public share size in GiB (0 = disabled):", "type": "int", "minimum": 0},
-            "size_ratio_ban": {"description": "Ban users who fail the public size ratio check?", "type": "bool"},
-            "size_ratio_pm": {"description": "Send message to users who fail the public size ratio check?", "type": "bool"},
-            "size_ratio_message": {"type": "string"},
+            "message": {
+                "description": ("Private chat message to send to leechers. Each line is sent as a separate message, "
+                                "too many message lines may get you temporarily banned for spam!"),
+                "group": "Automatic Message",
+                "type": "textview"
+            },
+            "open_private_chat": {
+                "description": "Open chat tabs when sending private messages to leechers",
+                "group": "Automatic Message",
+                "type": "bool"
+            },
+            "num_files": {
+                "description": "Require users to have a minimum number of shared files:",
+                "group": "Limits",
+                "type": "int", "minimum": 0
+            },
+            "num_folders": {
+                "description": "Require users to have a minimum number of shared folders:",
+                "group": "Limits",
+                "type": "int", "minimum": 1
+            },
+            "detected_leechers": {
+                "description": "Detected leechers",
+                "group": "Detected Leechers",
+                "type": "list string"
+            }
         }
 
         self.probed_users = {}
-        self.lock = threading.Lock()
 
     def loaded_notification(self):
-        self.log("=== Leech Detector loaded ===")
-        self.log(f"Primary check: >= {self.settings['min_public_percent']}% public + {self.settings['min_public_gib']} GiB")
-        self.log(f"Auto-open browse: {'ON' if self.settings['auto_open_browse'] else 'OFF'} | Keep open: {'ON' if self.settings['keep_browse_open'] else 'OFF'}")
-        self.log("NOTE: This plugin is not endorsed or supported by the Nicotine+ Developers!")
+
+        min_num_files = self.metasettings["num_files"]["minimum"]
+        min_num_folders = self.metasettings["num_folders"]["minimum"]
+
+        if self.settings["num_files"] < min_num_files:
+            self.settings["num_files"] = min_num_files
+
+        if self.settings["num_folders"] < min_num_folders:
+            self.settings["num_folders"] = min_num_folders
+
+        self.log(
+            "Require users have a minimum of %d files in %d shared public folders.",
+            (self.settings["num_files"], self.settings["num_folders"])
+        )
+
+    def check_user(self, user, num_files, num_folders, source="server"):
+
+        if user not in self.probed_users:
+            # We are not watching this user
+            return
+
+        if self.probed_users[user] == "okay":
+            # User was already accepted previously, nothing to do
+            return
+
+        if self.probed_users[user] == "requesting_shares" and source != "peer":
+            # Waiting for stats from peer, but received stats from server. Ignore.
+            return
+
+        is_user_accepted = (num_files >= self.settings["num_files"] and num_folders >= self.settings["num_folders"])
+
+        if is_user_accepted or user in self.core.buddies.users:
+            if user in self.settings["detected_leechers"]:
+                self.settings["detected_leechers"].remove(user)
+
+            self.probed_users[user] = "okay"
+
+            if is_user_accepted:
+                self.log("User %s is okay, sharing %s files in %s folders.", (user, num_files, num_folders))
+            else:
+                self.log("Buddy %s is sharing %s files in %s folders. Not complaining.",
+                         (user, num_files, num_folders))
+            return
+
+        if not self.probed_users[user].startswith("requesting"):
+            # We already dealt with the user this session
+            return
+
+        if user in self.settings["detected_leechers"]:
+            # We already messaged the user in a previous session
+            self.probed_users[user] = "processed_leecher"
+            return
+
+        if (num_files <= 0 or num_folders <= 0) and self.probed_users[user] != "requesting_shares":
+            # SoulseekQt only sends the number of shared files/folders to the server once on startup.
+            # Verify user's actual number of files/folders.
+            self.log("User %s has no shared files according to the server, requesting shares to verify…", user)
+
+            self.probed_users[user] = "requesting_shares"
+            self.core.userbrowse.request_user_shares(user)
+            return
+
+        if self.settings["message"]:
+            log_message = ("Leecher detected, %s is only sharing %s files in %s folders. Going to message "
+                           "leecher after transfer…")
+        else:
+            log_message = ("Leecher detected, %s is only sharing %s files in %s folders. Going to log "
+                           "leecher after transfer…")
+
+        self.probed_users[user] = "pending_leecher"
+        self.log(log_message, (user, num_files, num_folders))
 
     def upload_queued_notification(self, user, virtual_path, real_path):
-        now = time.time()
-        cooldown = 30
 
-        with self.lock:
-            if now - self.probed_users.get(user, 0) < cooldown:
-                return
-            self.probed_users[user] = now
-            self.core.userbrowse.request_user_shares(user)
+        if user in self.probed_users:
+            return
 
-        if self.settings.get("auto_open_browse", True):
-            delay = self.settings.get("browse_delay_seconds", 2.0)
-            if GLib is not None:
-                GLib.timeout_add_seconds(int(delay), self._open_browse_window, user)
+        self.probed_users[user] = "requesting_stats"
 
-        threading.Thread(target=self._check_timeout, args=(user, now), daemon=True).start()
+        if user not in self.core.users.watched:
+            # Transfer manager will request the stats from the server shortly
+            return
 
-    def _open_browse_window(self, user):
-        """Runs on the main thread."""
-        try:
-            self.core.userbrowse.browse_user(user)
-            self.log(f"BROWSE OPENED -> {user}")
-            if self.settings.get("keep_browse_open", True):
-                try:
-                    self.core.userbrowse.show_user(user)
-                except Exception:
-                    pass
-        except Exception as e:
-            self.log(f"WARNING: Failed to open browse window for {user}: {e}")
-        return False
-
-    def _check_timeout(self, user, request_time):
-        time.sleep(25)
-        with self.lock:
-            if user not in self.probed_users or self.probed_users[user] != request_time:
-                return
-            self.probed_users.pop(user, None)
-
-        self.log(f"TIMEOUT -> No stats from {user} -> cancelling uploads")
-        self._cancel_all_uploads_from_user(user)
+        # We've received the user's stats in the past. They could be outdated by
+        # now, so request them again.
+        self.core.users.request_user_stats(user)
 
     def user_stats_notification(self, user, stats):
-        if stats.get('source') != 'peer':
+        self.check_user(user, num_files=stats["files"], num_folders=stats["dirs"], source=stats["source"])
+
+    def upload_finished_notification(self, user, *_):
+
+        if user not in self.probed_users:
             return
 
-        with self.lock:
-            if user not in self.probed_users:
-                return
-            del self.probed_users[user]
-
-        username = stats.get('username', user)
-        files = stats.get('files', 0)
-        dirs = stats.get('dirs', 0)
-        private_dirs = stats.get('private_dirs', 0)
-        total_bytes = stats.get('shared_size', 0) or 0
-        private_bytes = stats.get('private_shared_size', 0) or 0
-        public_bytes = max(0, total_bytes - private_bytes)
-
-        if total_bytes == 0:
-            self._handle_no_share(username)
+        if self.probed_users[user] != "pending_leecher":
             return
 
-        public_percent = (public_bytes / total_bytes * 100) if total_bytes > 0 else 0.0
+        self.probed_users[user] = "processed_leecher"
 
-        self.log(f"[STATS] {username} | {files:,} files, {dirs:,} folders ({private_dirs:,} private) | "
-                 f"Public: {human_size(public_bytes)} ({public_percent:.1f}%) | Locked: {human_size(private_bytes)}")
-
-        min_pub_pct = self.settings.get("min_public_percent", 80)
-        min_pub_gib = self.settings.get("min_public_gib", 50)
-        min_pub_bytes = min_pub_gib * GB_IN_BYTES
-
-        fails_size_ratio = (public_percent < min_pub_pct) or (min_pub_gib > 0 and public_bytes < min_pub_bytes)
-
-        if fails_size_ratio:
-            if self.settings.get("size_ratio_ban", True):
-                self._handle_leech(username, self.settings.get("size_ratio_message"), "size_ratio")
-                return
-            if self.settings.get("size_ratio_pm", True):
-                self._send_message(username, self.settings.get("size_ratio_message"))
-                return
-
-        self._run_legacy_checks(username, files, dirs, private_dirs, total_bytes, public_bytes, public_percent)
-
-    def _run_legacy_checks(self, user, files, dirs, private_dirs, total_bytes, public_bytes, public_percent):
-        if files == 0:
-            if self.settings.get("no_files_ban"):
-                self._handle_leech(user, self.settings.get("no_files_message"), "no_files")
-            elif self.settings.get("no_files_pm"):
-                self._send_message(user, self.settings.get("no_files_message"))
+        if not self.settings["message"]:
+            self.log("Leecher %s doesn't share enough files. No message is specified in plugin settings.", user)
             return
 
-        if files == 0 and dirs > 0 and self.settings.get("empty_folders_ban"):
-            self._handle_leech(user, self.settings.get("empty_folders_message"), "empty_folders")
-            return
+        for line in self.settings["message"].splitlines():
+            for placeholder, option_key in self.PLACEHOLDERS.items():
+                # Replace message placeholders with actual values specified in the plugin settings
+                line = line.replace(placeholder, str(self.settings[option_key]))
 
-        if dirs > 0 and private_dirs == dirs and self.settings.get("all_privates_ban"):
-            self._handle_leech(user, self.settings.get("all_privates_message"), "all_privates")
-            return
+            self.send_private(user, line, show_ui=self.settings["open_private_chat"], switch_page=False)
 
-        if files < self.settings.get("num_files", 0) and self.settings.get("num_files_ban"):
-            self._handle_leech(user, self.settings.get("num_files_message"), "num_files")
-            return
+        if user not in self.settings["detected_leechers"]:
+            self.settings["detected_leechers"].append(user)
 
-        if dirs < self.settings.get("num_folders", 0) and self.settings.get("num_folders_ban"):
-            self._handle_leech(user, self.settings.get("num_folders_message"), "num_folders")
-            return
-
-        required_bytes = self._convert_size_to_bytes(self.settings.get("share_size", 0), self.settings.get("share_size_unit", "GB"))
-        if total_bytes < required_bytes and self.settings.get("share_size_ban"):
-            self._handle_leech(user, self.settings.get("share_size_message"), "share_size")
-            return
-
-        self.log(f"PASSED -> {user} (public: {human_size(public_bytes)} / {public_percent:.1f}%)")
-
-    def _handle_no_share(self, user):
-        if self.settings.get("no_files_ban"):
-            self._handle_leech(user, self.settings.get("no_files_message"), "no_files")
-        elif self.settings.get("no_files_pm"):
-            self._send_message(user, self.settings.get("no_files_message"))
-
-    def _handle_leech(self, user, message, reason):
-        if self.settings.get(f"{reason}_ban", False):
-            if hasattr(self.core, 'network_filter'):
-                self.core.network_filter.ban_user(user)
-            self.log(f"BAN -> {user} (reason: {reason})")
-
-        if self.settings.get(f"{reason}_pm", False) or self.settings.get("open_private_chat"):
-            self._send_message(user, message)
-
-    def _send_message(self, user, message):
-        if not message:
-            return
-        full_msg = AUTO_MESSAGE_PREFIX + message
-        if hasattr(self.core, 'privatechat'):
-            self.core.privatechat.send_message(user, full_msg)
-            if self.settings.get("open_private_chat"):
-                self.core.privatechat.show_user(user)
-        self.log(f"MESSAGE SENT -> {user}: {message}")
-
-    def _convert_size_to_bytes(self, value, unit):
-        try:
-            val = float(value)
-        except (ValueError, TypeError):
-            val = 0.0
-
-        if unit == "MB":
-            return int(val * (1024 ** 2))
-        elif unit == "GB":
-            return int(val * (1024 ** 3))
-        return 0
-
-    def _cancel_all_uploads_from_user(self, user):
-        try:
-            cancelled = 0
-            transfers = getattr(self.core, 'transfers', None)
-            if transfers and hasattr(transfers, 'uploads'):
-                for transfer in list(transfers.uploads):
-                    if getattr(transfer, 'user', None) == user:
-                        if hasattr(transfers, 'cancel_upload'):
-                            transfers.cancel_upload(user, getattr(transfer, 'virtual_path', ''))
-                        elif hasattr(transfers, 'cancel_transfer'):
-                            transfers.cancel_transfer(transfer)
-                        cancelled += 1
-            if cancelled:
-                self.log(f"CANCELLED -> {cancelled} upload(s) from {user}")
-        except Exception as e:
-            self.log(f"ERROR: Failed to cancel uploads for {user}: {e}")
+        self.log("Leecher %s doesn't share enough files. Message sent.", user)

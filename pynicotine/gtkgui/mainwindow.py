@@ -412,39 +412,39 @@ class MainWindow(Window):
 
         elif self.privatechat.highlighted_users:
             # Private Chats have a higher priority
-            user, (mention_type, mention_keyword) = list(self.privatechat.highlighted_users.items())[-1]
+            username, (mention_type, mention_keyword) = list(self.privatechat.highlighted_users.items())[-1]
 
             if mention_type == "self":
-                notification_text = _("Mentioned by %(user)s in Private") % {"user": user}
+                notification_text = _("Mentioned by %(user)s in Private") % {"user": username}
 
             elif mention_type == "keyword":
                 notification_text = _("Keyword %(keyword)s Mentioned by %(user)s in Private") % {
                     "keyword": mention_keyword,
-                    "user": user
+                    "user": username
                 }
             else:
-                notification_text = _("Private Message from %(user)s") % {"user": user}
+                notification_text = _("Private Message from %(user)s") % {"user": username}
 
             self.set_urgency_hint(True)
 
         elif self.chatrooms.highlighted_rooms:
             # Allow for the possibility the username is not available
-            room, (user, mention_type, mention_keyword) = list(self.chatrooms.highlighted_rooms.items())[-1]
+            room_name, (username, mention_type, mention_keyword) = list(self.chatrooms.highlighted_rooms.items())[-1]
 
             if mention_type == "self":
-                notification_text = _("Mentioned by %(user)s in Room %(room)s") % {"user": user, "room": room}
+                notification_text = _("Mentioned by %(user)s in Room %(room)s") % {"user": username, "room": room_name}
 
             elif mention_type == "keyword":
                 notification_text = _("Keyword %(keyword)s Mentioned by %(user)s in Room %(room)s") % {
                     "keyword": mention_keyword,
-                    "user": user,
-                    "room": room
+                    "user": username,
+                    "room": room_name
                 }
 
             elif mention_type == "username":
                 notification_text = _("Message by Watched User %(user)s in Room %(room)s") % {
                     "user": mention_keyword,
-                    "room": room
+                    "room": room_name
                 }
 
             self.set_urgency_hint(True)
@@ -1050,7 +1050,7 @@ class MainWindow(Window):
         self.update_user_status()
 
     def user_status(self, msg):
-        if msg.user == core.users.login_username:
+        if msg.username == core.users.login_username:
             self.update_user_status()
 
     # Search #

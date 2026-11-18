@@ -1,24 +1,33 @@
 # SPDX-FileCopyrightText: 2020-2026 Nicotine+ Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import re
 import time
 
 import pynicotine
 from pynicotine.config import config
 from pynicotine.core import core
-from pynicotine.events import events
-from pynicotine.events import StopEventPropagation
+from pynicotine.events import StopEventPropagation, events
 from pynicotine.logfacility import log
-from pynicotine.slskmessages import SERVER_USERNAME
-from pynicotine.slskmessages import MessageAcked
-from pynicotine.slskmessages import MessageUser
-from pynicotine.slskmessages import MessageUsers
-from pynicotine.slskmessages import SayChatroom
-from pynicotine.slskmessages import UserStatus
-from pynicotine.utils import censor_text
-from pynicotine.utils import find_whole_word
-from pynicotine.utils import replace_text
+from pynicotine.slskmessages import (
+    SERVER_USERNAME,
+    GetPeerAddress,
+    GetUserStatus,
+    Login,
+    MessageAcked,
+    MessageUser,
+    MessageUsers,
+    SayChatroom,
+    ServerDisconnect,
+    UserStatus
+)
+from pynicotine.utils import (
+    censor_text,
+    find_whole_word,
+    replace_text
+)
 
 
 class PrivateChat:
@@ -44,7 +53,7 @@ class PrivateChat:
         ):
             events.connect(event_name, callback)
 
-    def _start(self):
+    def _start(self) -> None:
 
         if not config.sections["privatechat"]["store"]:
             # Clear list of previously open chats if we don't want to restore them
@@ -57,11 +66,11 @@ class PrivateChat:
 
         self.update_completions()
 
-    def _quit(self):
+    def _quit(self) -> None:
         self.remove_all_users(is_permanent=False)
         self.completions.clear()
 
-    def _server_login(self, msg):
+    def _server_login(self, msg: Login) -> None:
 
         if not msg.success:
             return
@@ -69,7 +78,7 @@ class PrivateChat:
         for username in self.users:
             core.users.watch_user(username, context="privatechat")  # Get notified of user status
 
-    def _server_disconnect(self, _msg):
+    def _server_disconnect(self, _msg: ServerDisconnect) -> None:
 
         self._away_message_users.clear()
         self._private_message_queue.clear()
@@ -77,7 +86,7 @@ class PrivateChat:
 
         self.update_completions()
 
-    def show_user(self, username, switch_page=True, remembered=False):
+    def show_user(self, username: str, switch_page: bool = True, remembered: bool = False) -> None:
 
         self.users.add(username)
 
@@ -87,7 +96,7 @@ class PrivateChat:
         events.emit("private-chat-show-user", username, switch_page, remembered)
         core.users.watch_user(username, context="privatechat")
 
-    def remove_user(self, username, is_permanent=True):
+    def remove_user(self, username: str, is_permanent: bool = True) -> None:
 
         if is_permanent and username in config.sections["privatechat"]["users"]:
             config.sections["privatechat"]["users"].remove(username)
@@ -96,20 +105,20 @@ class PrivateChat:
         core.users.unwatch_user(username, context="privatechat")
         events.emit("private-chat-remove-user", username)
 
-    def remove_all_users(self, is_permanent=True):
+    def remove_all_users(self, is_permanent: bool = True) -> None:
         for username in self.users.copy():
             self.remove_user(username, is_permanent)
 
-    def clear_private_messages(self, username):
+    def clear_private_messages(self, username: str) -> None:
         events.emit("clear-private-messages", username)
 
-    def send_automatic_message(self, username, message):
+    def send_automatic_message(self, username: str, message: str) -> None:
         self.send_message(username, f"[Automatic Message] {message}")
 
-    def echo_message(self, username, message, message_type="local"):
+    def echo_message(self, username: str, message: str, message_type: str = "local") -> None:
         events.emit("echo-private-message", username, message, message_type)
 
-    def send_message(self, username, message):
+    def send_message(self, username: str, message: str) -> None:
 
         if core.users.login_status == UserStatus.OFFLINE:
             return
@@ -127,12 +136,12 @@ class PrivateChat:
         # Server rejects messages containing newlines, filter them
         message = message.replace("\r", "").replace("\n", " ")
 
-        core.send_message_to_server(MessageUser(username, message))
+        core.send_message_to_server(MessageUser(username=username, message=message))
         core.pluginhandler.outgoing_private_chat_notification(username, message)
 
-        events.emit("message-user", MessageUser(username, message))
+        events.emit("message-user", MessageUser(username=username, message=message))
 
-    def send_message_users(self, target, message):
+    def send_message_users(self, target: str, message: str) -> None:
 
         if not message:
             return
@@ -146,23 +155,23 @@ class PrivateChat:
             users = core.uploads.get_downloading_users()
 
         if users:
-            core.send_message_to_server(MessageUsers(users, message))
+            core.send_message_to_server(MessageUsers(usernames=users, message=message))
 
-    def _private_message_queue_add(self, msg):
+    def _private_message_queue_add(self, msg: MessageUser) -> None:
         """Queue a private message until we've received a user's IP address."""
 
-        username = msg.user
+        username = msg.username
 
         if username not in self._private_message_queue:
             self._private_message_queue[username] = [msg]
         else:
             self._private_message_queue[username].append(msg)
 
-    def _process_server_message(self, message):
+    def _process_server_message(self, message: str):
 
         first_paragraph, _sep, remaining_message = message.partition("\n")
         room_create_str = "Could not create room. Reason: "
-        redirect_room = None
+        redirect_room_name = None
         translated_message = None
 
         if first_paragraph.startswith(room_create_str):
@@ -170,7 +179,7 @@ class PrivateChat:
             template = _("Could not create room. Reason: %s")
 
             if reason == "Room name empty.":
-                redirect_room = ""
+                redirect_room_name = ""
                 translated_message = template % _("Room name empty.")
             else:
                 for pattern, translated_str in (
@@ -189,18 +198,18 @@ class PrivateChat:
                 ):
                     match = re.fullmatch(pattern, reason)
                     if match:
-                        redirect_room = match.groups()[0]
-                        translated_message = template % (translated_str % {"room": redirect_room})
+                        redirect_room_name = match.groups()[0]
+                        translated_message = template % (translated_str % {"room": redirect_room_name})
                         break
 
                 if translated_message is None:
                     pattern = r"Room name (.*?) longer than (\d+) characters\."
                     match = re.fullmatch(pattern, reason)
                     if match:
-                        redirect_room, num_chars = match.groups()
+                        redirect_room_name, num_chars = match.groups()
                         translated_message = template % (
                             _("Room name %(name)s longer than %(chars)s characters.") % {
-                                "name": redirect_room,
+                                "name": redirect_room_name,
                                 "chars": num_chars
                             }
                         )
@@ -239,8 +248,8 @@ class PrivateChat:
             ):
                 match = re.fullmatch(pattern, first_paragraph)
                 if match:
-                    redirect_room = match.groups()[0]
-                    translated_message = translated_str % {"room": redirect_room}
+                    redirect_room_name = match.groups()[0]
+                    translated_message = translated_str % {"room": redirect_room_name}
                     break
 
         if translated_message is None:
@@ -264,10 +273,10 @@ class PrivateChat:
             ):
                 match = re.fullmatch(pattern, first_paragraph)
                 if match:
-                    username, room = match.groups()
+                    username, room_name = match.groups()
                     translated_message = translated_str % {
                         "user": username,
-                        "room": room
+                        "room": room_name
                     }
                     break
 
@@ -280,10 +289,10 @@ class PrivateChat:
             ):
                 match = re.fullmatch(pattern, first_paragraph)
                 if match:
-                    username, room, operator = match.groups()
+                    username, room_name, operator = match.groups()
                     translated_message = translated_str % {
                         "user": username,
-                        "room": room,
+                        "room": room_name,
                         "operator": operator
                     }
                     break
@@ -292,8 +301,8 @@ class PrivateChat:
             if remaining_message:
                 translated_message += "\n" + remaining_message
 
-            if redirect_room is not None:
-                msg = SayChatroom(room=redirect_room, message=translated_message, user=SERVER_USERNAME)
+            if redirect_room_name is not None:
+                msg = SayChatroom(room_name=redirect_room_name, message=translated_message, username=SERVER_USERNAME)
                 events.emit("say-chat-room", msg)
                 return None
 
@@ -301,7 +310,7 @@ class PrivateChat:
 
         return message
 
-    def _process_ctcp_query(self, username, query):
+    def _process_ctcp_query(self, username: str, query: str) -> None:
 
         if not config.sections["ctcp"]["enable"]:
             return
@@ -322,34 +331,34 @@ class PrivateChat:
 
         self.send_message(username, reply)
 
-    def _get_peer_address(self, msg):
+    def _get_peer_address(self, msg: GetPeerAddress) -> None:
         """Server code 3.
 
         Received a user's IP address, process any queued private
         messages and check if the IP is ignored
         """
 
-        username = msg.user
+        username = msg.username
 
         if username not in self._private_message_queue:
             return
 
         for queued_msg in self._private_message_queue[username][:]:
             self._private_message_queue[username].remove(queued_msg)
-            queued_msg.user = username
+            queued_msg.username = username
             events.emit("message-user", queued_msg, queued_message=True)
 
-    def _user_status(self, msg):
+    def _user_status(self, msg: GetUserStatus) -> None:
         """Server code 7."""
 
-        if msg.user == core.users.login_username and msg.status != UserStatus.AWAY:
+        if msg.username == core.users.login_username and msg.status != UserStatus.AWAY:
             # Reset list of users we've sent away messages to when the away session ends
             self._away_message_users.clear()
 
         if msg.status == UserStatus.OFFLINE:
-            self._private_message_queue.pop(msg.user, None)
+            self._private_message_queue.pop(msg.username, None)
 
-    def get_message_type(self, text, is_outgoing_message):
+    def get_message_type(self, text: str, is_outgoing_message: bool) -> str:
 
         if text.startswith("/me "):
             return "action"
@@ -359,7 +368,7 @@ class PrivateChat:
 
         return "remote"
 
-    def get_mention_type(self, message):
+    def get_mention_type(self, message: str):
 
         message_lower = message.lower()
 
@@ -380,12 +389,12 @@ class PrivateChat:
 
         return None, None
 
-    def _message_user(self, msg, queued_message=False):
+    def _message_user(self, msg: MessageUser, queued_message: bool = False) -> None:
         """Server code 22."""
 
         is_outgoing_message = (msg.message_id is None)
 
-        username = msg.user
+        username = msg.username
         tag_username = (core.users.login_username if is_outgoing_message else username)
         message = msg.message
         timestamp = msg.timestamp if not msg.is_new_message else None
@@ -480,7 +489,7 @@ class PrivateChat:
             self.send_automatic_message(username, autoreply)
             self._away_message_users.add(username)
 
-    def update_completions(self):
+    def update_completions(self) -> None:
 
         self.completions.clear()
         self.completions.add(config.sections["server"]["login"])
