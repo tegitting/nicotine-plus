@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tegitting
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+Version = "2026-11-18r00"
+Authors = ["tegitting"]
+Name = "Wishlist Search"
+Description = "Searches for wishlist items more often than the server's wishlist interval, one item at a time with a randomised delay.\n\nItems with auto-search turned off are skipped. Very frequent searching may get you temporarily restricted by the server, so prefer 'medium' or 'slow'."

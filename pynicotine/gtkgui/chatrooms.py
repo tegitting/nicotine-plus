@@ -36,7 +36,8 @@ from pynicotine.gtkgui.widgets.theme import add_css_class
 from pynicotine.gtkgui.widgets.theme import get_flag_icon_name
 from pynicotine.gtkgui.widgets.treeview import TreeView
 from pynicotine.logfacility import log
-from pynicotine.slskmessages import UserData
+from pynicotine.slskmessages import RoomType
+from pynicotine.slskmessages import UserStats
 from pynicotine.slskmessages import UserStatus
 from pynicotine.utils import humanize
 from pynicotine.utils import human_speed
@@ -161,17 +162,17 @@ class ChatRooms(IconNotebook):
         core.chatrooms.remove_all_rooms()
 
     def on_restore_removed_page(self, page_args):
-        room, is_private = page_args
-        core.chatrooms.show_room(room, is_private=is_private)
+        room_name, is_private = page_args
+        core.chatrooms.show_room(room_name, is_private=is_private)
 
     def on_reordered_page(self, *_args):
 
         room_tab_order = {}
 
         # Find position of opened auto-joined rooms
-        for room, room_page in self.pages.items():
+        for room_name, room_page in self.pages.items():
             room_position = self.page_num(room_page.container)
-            room_tab_order[room_position] = room
+            room_tab_order[room_position] = room_name
 
         config.sections["server"]["autojoin"] = [room for room_index, room in sorted(room_tab_order.items())]
 
@@ -180,13 +181,13 @@ class ChatRooms(IconNotebook):
         if self.window.current_page_id != self.window.chatrooms_page.id:
             return
 
-        for room, tab in self.pages.items():
+        for room_name, tab in self.pages.items():
             if tab.container != page:
                 continue
 
-            joined_room = core.chatrooms.joined_rooms.get(room)
+            joined_room = core.chatrooms.joined_rooms.get(room_name)
 
-            self.message_entry.set_parent(tab.message_entry_container, tab.chat_view, room)
+            self.message_entry.set_parent(tab.message_entry_container, tab.chat_view, room_name)
             self.message_entry.set_sensitive(joined_room is not None and joined_room.users)
             tab.toggle_chat_buttons()
             tab.update_room_user_completions()
@@ -199,49 +200,49 @@ class ChatRooms(IconNotebook):
 
             self.command_help.set_menu_button(tab.help_button)
             self.room_wall.set_menu_button(tab.room_wall_button)
-            self.room_wall.room = room
+            self.room_wall.room_name = room_name
 
             if not tab.loaded:
                 tab.load()
 
             # Remove highlight
-            self.unhighlight_room(room)
+            self.unhighlight_room(room_name)
             break
 
-    def on_create_room_response(self, dialog, _response_id, room):
+    def on_create_room_response(self, dialog, _response_id, room_name):
         private = dialog.get_option_value()
-        core.chatrooms.show_room(room, private)
+        core.chatrooms.show_room(room_name, private)
 
     def on_create_room(self, *_args):
 
-        room = self.window.chatrooms_entry.get_text().strip()
+        room_name = self.window.chatrooms_entry.get_text().strip()
 
-        if not room:
+        if not room_name:
             return
 
         if (core.users.login_status != UserStatus.OFFLINE
-                and room not in core.chatrooms.server_rooms and room not in core.chatrooms.private_rooms):
-            room = core.chatrooms.sanitize_room_name(room)
+                and room_name not in core.chatrooms.server_rooms and room_name not in core.chatrooms.private_rooms):
+            room_name = core.chatrooms.sanitize_room_name(room_name)
             OptionDialog(
                 application=self.window.application,
                 title=_("Create New Room?"),
-                message=_('Do you really want to create a new room "%s"?') % room,
+                message=_('Do you really want to create a new room "%s"?') % room_name,
                 option_label=_("Make room private"),
                 buttons=[
                     ("cancel", _("_Cancel")),
                     ("ok", _("Cre_ate"))
                 ],
                 callback=self.on_create_room_response,
-                callback_data=room
+                callback_data=room_name
             ).present()
         else:
-            core.chatrooms.show_room(room)
+            core.chatrooms.show_room(room_name)
 
         self.window.chatrooms_entry.set_text("")
 
-    def clear_room_messages(self, room):
+    def clear_room_messages(self, room_name):
 
-        page = self.pages.get(room)
+        page = self.pages.get(room_name)
 
         if page is not None:
             page.chat_view.clear()
@@ -254,36 +255,36 @@ class ChatRooms(IconNotebook):
 
         page = self.get_current_page()
 
-        for room, tab in self.pages.items():
+        for room_name, tab in self.pages.items():
             if tab.container == page:
                 # Remove highlight
-                self.unhighlight_room(room)
+                self.unhighlight_room(room_name)
                 break
 
-    def show_room(self, room, is_private=False, switch_page=True, remembered=False):
+    def show_room(self, room_name, is_private=False, switch_page=True, remembered=False):
 
-        if room not in self.pages:
-            is_global = (room == core.chatrooms.GLOBAL_ROOM_NAME)
+        if room_name not in self.pages:
+            is_global = (room_name == core.chatrooms.GLOBAL_ROOM_NAME)
             tab_position = 0 if is_global and not remembered else -1
-            self.pages[room] = tab = ChatRoom(self, room, is_private=is_private, is_global=is_global)
+            self.pages[room_name] = tab = ChatRoom(self, room_name, is_private=is_private, is_global=is_global)
 
             self.insert_page(
-                tab.container, room, focus_callback=tab.on_focus, close_callback=tab.on_leave_room,
+                tab.container, room_name, focus_callback=tab.on_focus, close_callback=tab.on_leave_room,
                 position=tab_position
             )
             tab.set_label(self.get_tab_label_inner(tab.container))
 
             if not is_global:
                 combobox = self.window.search.room_search_combobox
-                combobox.append(room)
+                combobox.append(room_name)
 
         if switch_page:
-            self.set_current_page(self.pages[room].container)
+            self.set_current_page(self.pages[room_name].container)
             self.window.change_main_page(self.window.chatrooms_page)
 
-    def remove_room(self, room):
+    def remove_room(self, room_name):
 
-        page = self.pages.get(room)
+        page = self.pages.get(room_name)
 
         if page is None:
             return
@@ -299,38 +300,39 @@ class ChatRooms(IconNotebook):
                 self.room_wall.room = None
 
         page.clear()
-        self.remove_page(page.container, page_args=(room, page.is_private))
-        del self.pages[room]
+        self.remove_page(page.container, page_args=(room_name, page.is_private))
+        del self.pages[room_name]
         page.destroy()
 
-        self.message_entry.clear_unsent_message(room)
+        self.message_entry.clear_unsent_message(room_name)
 
-        if room != core.chatrooms.GLOBAL_ROOM_NAME:
+        if room_name != core.chatrooms.GLOBAL_ROOM_NAME:
             combobox = self.window.search.room_search_combobox
-            combobox.remove_id(room)
+            combobox.remove_id(room_name)
 
-    def highlight_room(self, room, user, mention_type, mention_keyword):
+    def highlight_room(self, room_name, username, mention_type, mention_keyword):
 
-        if not room:
+        if not room_name:
             return
 
-        self.highlighted_rooms[room] = (user, mention_type, mention_keyword)
+        self.highlighted_rooms[room_name] = (username, mention_type, mention_keyword)
         self.window.update_title()
         self.window.application.tray_icon.update()
 
-    def unhighlight_room(self, room):
+    def unhighlight_room(self, room_name):
 
-        if room not in self.highlighted_rooms:
+        if room_name not in self.highlighted_rooms:
             return
 
-        del self.highlighted_rooms[room]
+        del self.highlighted_rooms[room_name]
         self.window.update_title()
         self.window.application.tray_icon.update()
 
     def join_room(self, msg):
 
-        page = self.pages.get(msg.room)
-        self.join_room_combobox.append(msg.room)
+        room_name = msg.room_name
+        page = self.pages.get(room_name)
+        self.join_room_combobox.append(room_name)
 
         if page is None:
             return
@@ -343,7 +345,7 @@ class ChatRooms(IconNotebook):
 
     def leave_room(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.leave_room()
@@ -368,20 +370,20 @@ class ChatRooms(IconNotebook):
         for page in self.pages.values():
             page.user_status(msg)
 
-    def user_country(self, user, country):
+    def user_country(self, username, country):
         for page in self.pages.values():
-            page.user_country(user, country)
+            page.user_country(username, country)
 
     def user_joined_room(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.user_joined_room(msg)
 
     def user_left_room(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.user_left_room(msg)
@@ -391,21 +393,21 @@ class ChatRooms(IconNotebook):
         self.join_room_combobox.freeze()
         self.join_room_combobox.clear()
 
-        for room, _user_count in chain(msg.rooms, msg.rooms_owner, msg.rooms_member):
-            self.join_room_combobox.append(room)
+        for room_stats in chain(msg.rooms, msg.rooms_owner, msg.rooms_member):
+            self.join_room_combobox.append(room_stats.name)
 
         self.join_room_combobox.unfreeze()
 
-    def echo_room_message(self, room, text, message_type):
+    def echo_room_message(self, room_name, text, message_type):
 
-        page = self.pages.get(room)
+        page = self.pages.get(room_name)
 
         if page is not None:
             page.echo_room_message(text, message_type)
 
     def say_chat_room(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.say_chat_room(msg)
@@ -418,63 +420,63 @@ class ChatRooms(IconNotebook):
             page.global_room_message(msg)
 
     def room_membership_granted(self, msg):
-        self.join_room_combobox.append(msg.room)
+        self.join_room_combobox.append(msg.room_name)
 
     def room_operatorship_granted(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.room_operatorship_granted()
 
     def add_room_operator(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.add_room_operator(msg)
 
     def add_room_member(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.add_room_member(msg)
 
     def room_membership_revoked(self, msg):
-        self.join_room_combobox.remove_id(msg.room)
+        self.join_room_combobox.remove_id(msg.room_name)
 
     def room_operatorship_revoked(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.room_operatorship_revoked()
 
     def remove_room_member(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.remove_room_member(msg)
 
     def remove_room_operator(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.remove_room_operator(msg)
 
     def room_ticker_added(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.room_ticker_added(msg)
 
     def room_ticker_removed(self, msg):
 
-        page = self.pages.get(msg.room)
+        page = self.pages.get(msg.room_name)
 
         if page is not None:
             page.room_ticker_removed(msg)
@@ -511,7 +513,7 @@ class ChatRooms(IconNotebook):
 
 class ChatRoom:
 
-    def __init__(self, chatrooms, room, is_private, is_global):
+    def __init__(self, chatrooms, room_name, is_private, is_global):
 
         (
             self.activity_container,
@@ -538,7 +540,7 @@ class ChatRoom:
 
         self.chatrooms = chatrooms
         self.window = chatrooms.window
-        self.room = room
+        self.room_name = room_name
         self.is_private = is_private
         self.is_global = is_global
 
@@ -561,8 +563,8 @@ class ChatRoom:
         self.chat_view = ChatView(
             self.chat_view_container, message_entry=self.chatrooms.message_entry, editable=False,
             horizontal_margin=10, vertical_margin=5, pixels_below_lines=2,
-            status_users=core.chatrooms.joined_rooms[room].users,
-            roomname_event=(self.roomname_event if is_global else None),
+            status_users=core.chatrooms.joined_rooms[room_name].users,
+            room_name_event=(self.room_name_event if is_global else None),
             username_event=self.username_event
         )
 
@@ -582,7 +584,7 @@ class ChatRoom:
         self.user_list_button.connect("toggled", self.on_toggle_user_list_visibility)
         self.user_list_button.set_active(config.sections["chatrooms"]["user_list_visible"])
 
-        self.log_toggle.set_active(room in config.sections["logging"]["rooms"])
+        self.log_toggle.set_active(room_name in config.sections["logging"]["rooms"])
         self.toggle_chat_buttons()
 
         if GTK_API_VERSION >= 4:
@@ -596,7 +598,7 @@ class ChatRoom:
         room_wall_button.connect("toggled", self.on_show_room_wall)
 
         self.users_list_view = TreeView(
-            self.window, parent=self.users_list_container, name="chat_room", secondary_name=room,
+            self.window, parent=self.users_list_container, name="chat_room", secondary_name=room_name,
             persistent_sort=True, persistent_widths=False, activate_row_callback=self.on_row_activated,
             columns={
                 # Visible columns
@@ -733,21 +735,23 @@ class ChatRoom:
 
         self.message_entry_row.set_halign(Gtk.Align.END)
 
-    def add_user_row(self, userdata):
+    def add_user(self, username, stats=None):
 
-        username = userdata.username
-        status = userdata.status
+        if stats is None:
+            stats = UserStats(username=username)
+
+        status = stats.status or UserStatus.OFFLINE
         status_icon_name = USER_STATUS_ICON_NAMES.get(status, "")
-        flag_icon_name = get_flag_icon_name(userdata.country)
-        speed = userdata.avgspeed or 0
-        files = userdata.files or 0
-        folders = userdata.dirs or 0
-        h_files = humanize(files)
+        flag_icon_name = get_flag_icon_name(stats.country_code)
+        upload_speed = stats.upload_speed or 0
+        num_files = stats.num_files or 0
+        num_folders = stats.num_folders or 0
+        h_num_files = humanize(num_files)
         weight = Pango.Weight.NORMAL
         underline = Pango.Underline.NONE
         is_unignored = not (core.network_filter.is_user_ignored(username)
                             or core.network_filter.is_user_ip_ignored(username))
-        private_room = core.chatrooms.private_rooms.get(self.room)
+        private_room = core.chatrooms.private_rooms.get(self.room_name)
 
         if private_room is not None:
             if username == private_room.owner:
@@ -762,10 +766,10 @@ class ChatRoom:
             status_icon_name,
             flag_icon_name,
             username,
-            h_files,
-            speed,
-            files,
-            folders,
+            h_num_files,
+            upload_speed,
+            num_files,
+            num_folders,
             weight,
             underline,
             is_unignored
@@ -786,7 +790,7 @@ class ChatRoom:
 
         log_lines = log.read_log(
             folder_path=log.room_folder_path,
-            basename=self.room,
+            basename=self.room_name,
             num_lines=config.sections["logging"]["readroomlines"]
         )
 
@@ -800,16 +804,16 @@ class ChatRoom:
         # Temporarily disable sorting for increased performance
         self.users_list_view.freeze()
 
-        for userdata in joined_users:
-            username = userdata.username
+        for stats in joined_users:
+            username = stats.username
             iterator = self.users_list_view.iterators.get(username)
 
             if iterator is not None:
                 self.users_list_view.remove_row(iterator)
 
-            self.add_user_row(userdata)
+            self.add_user(username, stats)
 
-        private_room = core.chatrooms.private_rooms.get(self.room)
+        private_room = core.chatrooms.private_rooms.get(self.room_name)
 
         # List private room members who are offline/not currently joined
         if private_room is not None:
@@ -817,10 +821,10 @@ class ChatRoom:
 
             for username in private_room.members:
                 if username not in self.users_list_view.iterators:
-                    self.add_user_row(UserData(username, status=UserStatus.OFFLINE))
+                    self.add_user(username)
 
             if owner and owner not in self.users_list_view.iterators:
-                self.add_user_row(UserData(owner, status=UserStatus.OFFLINE))
+                self.add_user(owner)
 
         self.users_list_view.unfreeze()
 
@@ -834,8 +838,8 @@ class ChatRoom:
         if self.chatrooms.get_current_page() == self.container:
             self.update_room_user_completions()
 
-    def populate_user_menu(self, user, menu):
-        menu.set_user(user)
+    def populate_user_menu(self, username, menu):
+        menu.set_user(username)
         menu.toggle_user_items()
 
     def get_selected_username(self):
@@ -862,14 +866,14 @@ class ChatRoom:
 
     def on_row_activated(self, _list_view, _path, _column):
 
-        user = self.get_selected_username()
+        username = self.get_selected_username()
 
-        if user is not None:
-            core.userinfo.show_user(user)
+        if username is not None:
+            core.userinfo.show_user(username)
 
     def on_popup_menu_user(self, menu, _widget):
-        user = self.get_selected_username()
-        self.populate_user_menu(user, menu)
+        username = self.get_selected_username()
+        self.populate_user_menu(username, menu)
 
     def on_popup_menu_log(self, menu, _textview):
         menu.actions[_("Copy")].set_enabled(self.activity_view.get_has_selection())
@@ -889,29 +893,29 @@ class ChatRoom:
 
         self.user_list_button.set_active(config.sections["chatrooms"]["user_list_visible"])
 
-    def _show_notification(self, room, user, text, mention_type, mention_keyword):
+    def _show_notification(self, room_name, username, text, mention_type, mention_keyword):
 
         self.chatrooms.request_tab_changed(
             self.container, is_important=mention_type is not None, is_quiet=self.is_global)
 
-        if self.is_global and room in core.chatrooms.joined_rooms:
+        if self.is_global and room_name in core.chatrooms.joined_rooms:
             # Don't show notifications about the Public feed that's duplicated in an open tab
             return
 
         if mention_type == "self":
-            log.add(_("%(user)s mentioned you in room %(room)s") % {"user": user, "room": room})
+            log.add(_("%(user)s mentioned you in room %(room)s") % {"user": username, "room": room_name})
 
         elif mention_type == "keyword":
             log.add(_("Keyword %(keyword)s mentioned by %(user)s in room %(room)s") % {
                 "keyword": mention_keyword,
-                "user": user,
-                "room": room
+                "user": username,
+                "room": room_name
             })
 
         elif mention_type == "username":
             log.add(_("Message by watched user %(user)s in room %(room)s") % {
                 "user": mention_keyword,
-                "room": room
+                "room": room_name
             })
 
         if (self.chatrooms.get_current_page() == self.container
@@ -921,24 +925,24 @@ class ChatRoom:
 
         if mention_type is not None:
             # We were mentioned, update tray icon and show urgency hint
-            self.chatrooms.highlight_room(room, user, mention_type, mention_keyword)
+            self.chatrooms.highlight_room(room_name, username, mention_type, mention_keyword)
 
         if config.sections["notifications"]["notification_popup_chatroom_mention"]:
             if mention_type == "self":
                 core.notifications.show_chatroom_notification(
-                    room, text,
-                    title=_("Mentioned by %(user)s in Room %(room)s") % {"user": user, "room": room},
+                    room_name, text,
+                    title=_("Mentioned by %(user)s in Room %(room)s") % {"user": username, "room": room_name},
                     high_priority=True
                 )
                 return
 
             if mention_type == "keyword":
                 core.notifications.show_chatroom_notification(
-                    room, text,
+                    room_name, text,
                     title=_("Keyword %(keyword)s Mentioned by %(user)s in Room %(room)s") % {
                         "keyword": mention_keyword,
-                        "user": user,
-                        "room": room
+                        "user": username,
+                        "room": room_name
                     },
                     high_priority=True
                 )
@@ -946,10 +950,10 @@ class ChatRoom:
 
             if mention_type == "username":
                 core.notifications.show_chatroom_notification(
-                    room, text,
+                    room_name, text,
                     title=_("Message by Watched User %(user)s in Room %(room)s") % {
                         "user": mention_keyword,
-                        "room": room
+                        "room": room_name
                     },
                     high_priority=True
                 )
@@ -958,27 +962,27 @@ class ChatRoom:
         if not self.is_global and config.sections["notifications"]["notification_popup_chatroom"]:
             # Don't show notifications for public feed room, they're too noisy
             core.notifications.show_chatroom_notification(
-                room, text,
-                title=_("Message by %(user)s in Room %(room)s") % {"user": user, "room": room}
+                room_name, text,
+                title=_("Message by %(user)s in Room %(room)s") % {"user": username, "room": room_name}
             )
 
     def say_chat_room(self, msg):
 
-        roomname = msg.room
-        username = msg.user
+        room_name = msg.room_name
+        username = msg.username
         message = msg.message
         message_type = msg.message_type
         mention_type = msg.mention_type
         mention_keyword = msg.mention_keyword
 
         if message_type != "local":
-            self._show_notification(roomname, username, message, mention_type, mention_keyword)
+            self._show_notification(room_name, username, message, mention_type, mention_keyword)
 
         if mention_type is not None:
             message_type = "hilite"
 
         self.chat_view.add_line(
-            message, message_type=message_type, roomname=roomname if self.is_global else None, username=username,
+            message, message_type=message_type, room_name=room_name if self.is_global else None, username=username,
             timestamp_format=config.sections["logging"]["rooms_timestamp"]
         )
 
@@ -996,8 +1000,7 @@ class ChatRoom:
 
     def user_joined_room(self, msg):
 
-        userdata = msg.userdata
-        username = userdata.username
+        username = msg.username
         iterator = self.users_list_view.iterators.get(username)
 
         if iterator is not None:
@@ -1018,7 +1021,7 @@ class ChatRoom:
                 timestamp_format=config.sections["logging"]["rooms_timestamp"]
             )
 
-        self.add_user_row(userdata)
+        self.add_user(username, msg.stats)
 
         self.chat_view.update_user_tag(username)
         self.update_user_count()
@@ -1061,20 +1064,20 @@ class ChatRoom:
 
     def add_room_member(self, msg):
 
-        username = msg.user
+        username = msg.username
         iterator = self.users_list_view.iterators.get(username)
 
         if iterator is not None:
             return
 
-        self.add_user_row(UserData(username, status=UserStatus.OFFLINE))
+        self.add_user(username)
 
         self.chat_view.update_user_tag(username)
         self.update_user_count()
 
     def add_room_operator(self, msg):
 
-        iterator = self.users_list_view.iterators.get(msg.user)
+        iterator = self.users_list_view.iterators.get(msg.username)
 
         if iterator is None:
             return
@@ -1090,7 +1093,7 @@ class ChatRoom:
 
     def remove_room_member(self, msg):
 
-        username = msg.user
+        username = msg.username
         iterator = self.users_list_view.iterators.get(username)
 
         if iterator is None:
@@ -1103,7 +1106,7 @@ class ChatRoom:
 
     def remove_room_operator(self, msg):
 
-        iterator = self.users_list_view.iterators.get(msg.user)
+        iterator = self.users_list_view.iterators.get(msg.username)
 
         if iterator is None:
             return
@@ -1116,14 +1119,16 @@ class ChatRoom:
 
     def room_ticker_added(self, msg):
 
-        if msg.user == core.users.login_username:
+        username = msg.ticker.username
+
+        if username == core.users.login_username:
             return
 
-        self.unread_room_wall_users.add(msg.user)
+        self.unread_room_wall_users.add(username)
         self.update_room_wall_label()
 
     def room_ticker_removed(self, msg):
-        self.unread_room_wall_users.discard(msg.user)
+        self.unread_room_wall_users.discard(msg.username)
         self.update_room_wall_label()
 
     def update_user_count(self):
@@ -1156,7 +1161,7 @@ class ChatRoom:
 
     def peer_address(self, msg):
 
-        username = msg.user
+        username = msg.username
 
         if not core.network_filter.is_user_ip_ignored(username):
             return
@@ -1165,25 +1170,26 @@ class ChatRoom:
 
     def user_stats(self, msg):
 
-        user = msg.user
-        iterator = self.users_list_view.iterators.get(user)
+        username = msg.username
+        iterator = self.users_list_view.iterators.get(username)
 
         if iterator is None:
             return
 
-        if user not in core.chatrooms.joined_rooms[self.room].users:
+        if username not in core.chatrooms.joined_rooms[self.room_name].users:
             # Private room member offline/not currently joined
             return
 
-        speed = msg.avgspeed or 0
-        num_files = msg.files or 0
-        num_folders = msg.dirs or 0
+        stats = msg.stats
+        upload_speed = stats.upload_speed or 0
+        num_files = stats.num_files or 0
+        num_folders = stats.num_folders or 0
         column_ids = []
         column_values = []
 
-        if speed != self.users_list_view.get_row_value(iterator, "speed_data"):
+        if upload_speed != self.users_list_view.get_row_value(iterator, "speed_data"):
             column_ids.append("speed_data")
-            column_values.append(speed)
+            column_values.append(upload_speed)
 
         if num_files != self.users_list_view.get_row_value(iterator, "files_data"):
             h_num_files = humanize(num_files)
@@ -1200,20 +1206,20 @@ class ChatRoom:
 
     def user_status(self, msg):
 
-        user = msg.user
-        iterator = self.users_list_view.iterators.get(user)
+        username = msg.username
+        iterator = self.users_list_view.iterators.get(username)
 
         if iterator is None:
             return
 
-        if user not in core.chatrooms.joined_rooms[self.room].users:
+        if username not in core.chatrooms.joined_rooms[self.room_name].users:
             # Private room member offline/not currently joined
             return
 
         status = msg.status
-        status_icon_name = USER_STATUS_ICON_NAMES.get(status)
+        status_icon_name = USER_STATUS_ICON_NAMES.get(status, "")
 
-        if not status_icon_name or status_icon_name == self.users_list_view.get_row_value(iterator, "status"):
+        if status_icon_name == self.users_list_view.get_row_value(iterator, "status"):
             return
 
         if status == UserStatus.AWAY:
@@ -1227,22 +1233,22 @@ class ChatRoom:
             # left the room before an offline status is sent.
             return
 
-        if not core.network_filter.is_user_ignored(user) and not core.network_filter.is_user_ip_ignored(user):
+        if not core.network_filter.is_user_ignored(username) and not core.network_filter.is_user_ip_ignored(username):
             self.activity_view.add_line(
-                action % user, timestamp_format=config.sections["logging"]["rooms_timestamp"])
+                action % username, timestamp_format=config.sections["logging"]["rooms_timestamp"])
 
         self.users_list_view.set_row_value(iterator, "status", status_icon_name)
 
-        self.chat_view.update_user_tag(user)
+        self.chat_view.update_user_tag(username)
 
-    def user_country(self, user, country_code):
+    def user_country(self, username, country_code):
 
-        iterator = self.users_list_view.iterators.get(user)
+        iterator = self.users_list_view.iterators.get(username)
 
         if iterator is None:
             return
 
-        if user not in core.chatrooms.joined_rooms[self.room].users:
+        if username not in core.chatrooms.joined_rooms[self.room_name].users:
             # Private room member offline/not currently joined
             return
 
@@ -1251,14 +1257,14 @@ class ChatRoom:
         if flag_icon_name and flag_icon_name != self.users_list_view.get_row_value(iterator, "country"):
             self.users_list_view.set_row_value(iterator, "country", flag_icon_name)
 
-    def roomname_event(self, _pos_x, _pos_y, room):
-        core.chatrooms.show_room(room)
+    def room_name_event(self, _pos_x, _pos_y, room_name):
+        core.chatrooms.show_room(room_name)
 
-    def username_event(self, pos_x, pos_y, user):
+    def username_event(self, pos_x, pos_y, username):
 
         menu = self.popup_menu_user_chat
         menu.update_model()
-        self.populate_user_menu(user, menu)
+        self.populate_user_menu(username, menu)
         menu.popup(pos_x, pos_y)
 
     def update_tags(self):
@@ -1269,9 +1275,9 @@ class ChatRoom:
 
     def join_room(self, msg):
 
-        self.is_private = msg.private
+        self.is_private = (msg.room_type == RoomType.PRIVATE)
         login_username = core.users.login_username
-        private_room = core.chatrooms.private_rooms.get(self.room)
+        private_room = core.chatrooms.private_rooms.get(self.room_name)
 
         self.users_description_label.set_label(_("Members") if self.is_private else _("Online"))
         self.add_room_member_button.set_visible(
@@ -1317,12 +1323,12 @@ class ChatRoom:
 
         num_files = treeview.get_row_value(iterator, "files_data")
         num_folders = treeview.get_row_value(iterator, "folders_data")
-        speed = treeview.get_row_value(iterator, "speed_data")
+        upload_speed = treeview.get_row_value(iterator, "speed_data")
 
         return (
             _("Files: %(num_files)s") % {"num_files": humanize(num_files)} + "\n"
             + _("Folders: %(num_folders)s") % {"num_folders": humanize(num_folders)} + "\n"
-            + _("Speed: %(speed)s") % {"speed": human_speed(speed) if speed > 0 else _("Unknown")}
+            + _("Speed: %(speed)s") % {"speed": human_speed(upload_speed) if upload_speed > 0 else _("Unknown")}
         )
 
     def on_find_activity_log(self, *_args):
@@ -1332,7 +1338,7 @@ class ChatRoom:
         self.chat_search_bar.set_visible(True)
 
     def on_leave_room(self, *_args):
-        core.chatrooms.remove_room(self.room)
+        core.chatrooms.remove_room(self.room_name)
 
     def on_add_room_member_response(self, dialog, _response_id, _data):
 
@@ -1340,20 +1346,20 @@ class ChatRoom:
             # Tab was closed
             return
 
-        user = dialog.get_entry_value().strip()
-        private_room = core.chatrooms.private_rooms.get(self.room)
+        username = dialog.get_entry_value().strip()
+        private_room = core.chatrooms.private_rooms.get(self.room_name)
 
-        if not user or private_room is None:
+        if not username or private_room is None:
             return
 
-        if user == private_room.owner or user in private_room.members:
+        if username == private_room.owner or username in private_room.members:
             return
 
-        core.chatrooms.request_add_room_member(self.room, user)
+        core.chatrooms.request_add_room_member(self.room_name, username)
 
     def on_add_room_member(self, *_args):
 
-        if self.room not in core.chatrooms.private_rooms:
+        if self.room_name not in core.chatrooms.private_rooms:
             return
 
         EntryDialog(
@@ -1368,15 +1374,15 @@ class ChatRoom:
     def on_log_toggled(self, *_args):
 
         if not self.log_toggle.get_active():
-            if self.room in config.sections["logging"]["rooms"]:
-                config.sections["logging"]["rooms"].remove(self.room)
+            if self.room_name in config.sections["logging"]["rooms"]:
+                config.sections["logging"]["rooms"].remove(self.room_name)
             return
 
-        if self.room not in config.sections["logging"]["rooms"]:
-            config.sections["logging"]["rooms"].append(self.room)
+        if self.room_name not in config.sections["logging"]["rooms"]:
+            config.sections["logging"]["rooms"].append(self.room_name)
 
     def on_view_room_log(self, *_args):
-        log.open_log(log.room_folder_path, self.room)
+        log.open_log(log.room_folder_path, self.room_name)
 
     def on_delete_room_log_response(self, *_args):
 
@@ -1384,7 +1390,7 @@ class ChatRoom:
             # Tab was closed
             return
 
-        log.delete_log(log.room_folder_path, self.room)
+        log.delete_log(log.room_folder_path, self.room_name)
         self.activity_view.clear()
         self.chat_view.clear()
 
@@ -1445,7 +1451,7 @@ class ChatRoom:
 
         # We want to include users for this room only
         if config.sections["words"]["roomusers"]:
-            room_users = core.chatrooms.joined_rooms[self.room].users
+            room_users = core.chatrooms.joined_rooms[self.room_name].users
             completions.update(room_users)
 
         self.chatrooms.message_entry.set_completions(completions)

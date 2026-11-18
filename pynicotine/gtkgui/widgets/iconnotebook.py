@@ -210,12 +210,9 @@ class TabLabel:
 
     def set_status_icon(self, status):
 
-        icon_name = USER_STATUS_ICON_NAMES.get(status)
-
-        if not icon_name:
-            return
-
+        icon_name = USER_STATUS_ICON_NAMES.get(status, "")
         self.set_start_icon_name(icon_name)
+
         add_css_class(self.start_icon, "colored-icon")
         add_css_class(self.start_icon, "user-status")
 
@@ -254,15 +251,13 @@ class IconNotebook:
     - Dropdown menu for unread tabs
     """
 
-    def __init__(self, window, parent, parent_page=None, switch_page_callback=None, reorder_page_callback=None,
-                 read_changed_page_callback=None):
+    def __init__(self, window, parent, parent_page=None, switch_page_callback=None, reorder_page_callback=None):
 
         self.window = window
         self.parent = parent
         self.parent_page = parent_page
         self.switch_page_callback = switch_page_callback
         self.reorder_page_callback = reorder_page_callback
-        self.read_changed_page_callback = read_changed_page_callback
         self.switch_page_handler = None
         self.reorder_page_handler = None
         self.switch_page_delay_timer = None
@@ -383,11 +378,12 @@ class IconNotebook:
             tab_label = self.get_tab_label(page)
             tab_label.set_close_button_visibility(config.sections["ui"]["tabclosers"])
 
-    def append_page(self, page, text, focus_callback=None, close_callback=None, user=None):
-        self.insert_page(page, text, focus_callback, close_callback, user, position=-1)
+    def append_page(self, page, text, focus_callback=None, read_callback=None, close_callback=None,
+                    username=None):
+        self.insert_page(page, text, focus_callback, read_callback, close_callback, username, position=-1)
 
-    def insert_page(self, page, text, focus_callback=None, close_callback=None, user=None,
-                    position=None):
+    def insert_page(self, page, text, focus_callback=None, read_callback=None, close_callback=None,
+                    username=None, position=None):
 
         full_text = text
         text = (text[:25] + "…") if len(text) > 25 else text
@@ -397,6 +393,9 @@ class IconNotebook:
 
         if focus_callback:
             page.focus_callback = focus_callback
+
+        if read_callback:
+            page.read_callback = read_callback
 
         first_child = next(iter(page))
         first_child.set_visible(False)
@@ -410,12 +409,13 @@ class IconNotebook:
         self.set_tab_reorderable(page, True)
         self.parent.set_visible(True)
 
-        if user is not None:
-            status = core.users.statuses.get(user, UserStatus.OFFLINE)
+        if username is not None:
+            status = core.users.statuses.get(username, UserStatus.OFFLINE)
             self.set_user_status(page, text, status)
 
-    def prepend_page(self, page, text, focus_callback=None, close_callback=None, user=None):
-        self.insert_page(page, text, focus_callback, close_callback, user, position=0)
+    def prepend_page(self, page, text, focus_callback=None, read_callback=None, close_callback=None,
+                     username=None):
+        self.insert_page(page, text, focus_callback, read_callback, close_callback, username, position=0)
 
     def restore_removed_page(self, *_args):
         if self.recently_removed_pages:
@@ -423,12 +423,15 @@ class IconNotebook:
 
     def remove_page(self, page, page_args=None):
 
+        if hasattr(page, "focus_callback"):
+            del page.focus_callback
+
+        if hasattr(page, "read_callback"):
+            del page.read_callback
+
         self.widget.remove_page(self.page_num(page))
         self._remove_unread_page(page)
         self.popup_menu_pages.clear()
-
-        if hasattr(page, "focus_callback"):
-            del page.focus_callback
 
         tab_label = self.tab_labels.pop(page)
         tab_label.destroy()
@@ -600,8 +603,8 @@ class IconNotebook:
         important_page_removed = self.unread_pages.pop(page)
         self.update_pages_menu_button()
 
-        if self.read_changed_page_callback is not None:
-            self.read_changed_page_callback(self, page)
+        if hasattr(page, "read_callback"):
+            page.read_callback()
 
         if self.parent_page is None:
             return
@@ -617,7 +620,7 @@ class IconNotebook:
 
     # Tab User Status #
 
-    def set_user_status(self, page, user, status):
+    def set_user_status(self, page, username, status):
 
         if status == UserStatus.AWAY:
             status_text = _("Away")
@@ -630,7 +633,7 @@ class IconNotebook:
 
         tab_label = self.get_tab_label(page)
         tab_label.set_status_icon(status)
-        tab_label.set_tooltip_text(f"{user} ({status_text})")
+        tab_label.set_tooltip_text(f"{username} ({status_text})")
 
     # Signals #
 
@@ -646,7 +649,6 @@ class IconNotebook:
 
         self.reorder_page_handler = self.widget.connect("page-reordered", self.on_reorder_page)
         self.switch_page_handler = self.widget.connect("switch-page", self.on_switch_page)
-        self.widget.connect("page-removed", self.on_remove_page)
 
         if self.parent_page is None:
             # Show active page and focus default widget
@@ -663,9 +665,6 @@ class IconNotebook:
 
     def on_restore_removed_page(self, page_args):
         raise NotImplementedError
-
-    def on_remove_page(self, _notebook, new_page, _page_num):
-        self._remove_unread_page(new_page)
 
     def _on_remove_all_pages(self, *args):
 

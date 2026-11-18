@@ -1,126 +1,37 @@
+# SPDX-FileCopyrightText: 2020-2023 Nicotine+ Contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from pynicotine.pluginsystem import BasePlugin
-from pynicotine.slskmessages import UserStatus
-from gi.repository import GLib
-import random
 
 
 class Plugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
+
         super().__init__(*args, **kwargs)
 
-        self.settings = {
-            "frequency": "medium"
-        }
+        self.np_format = None
 
-        self.metasettings = {
-            "frequency": {
-                "type": "dropdown",
-                "options": ("fast", "medium", "slow"),
-                "description": "Search frequency (lower = more spaced out / safer from bot detection)"
-            }
-        }
+    def outgoing_global_search_event(self, search_term):
+        return (self.get_np(search_term),)
 
-        self.RANGES = {
-            "fast":   (20,  60),
-            "medium": (45, 120),
-            "slow":   (90, 300)
-        }
+    def outgoing_room_search_event(self, room, search_term):
+        return room, self.get_np(search_term)
 
-        self.loop_id = None
-        self.plugin_running = False
-        self.current_index = 0
+    def outgoing_buddy_search_event(self, search_term):
+        return (self.get_np(search_term),)
 
-    def is_server_connected(self):
-        """True when logged in to the Soulseek server (Online or Away)."""
-        try:
-            return self.core.users.login_status != UserStatus.OFFLINE
-        except Exception:
-            return False
+    def outgoing_user_search_event(self, users, search_term):
+        return users, self.get_np(search_term)
 
-    def init(self):
-        self.plugin_running = True
-        self.current_index = 0
+    def get_np(self, search_term):
+        self.np_format = search_term
+        now_playing = self.core.now_playing.get_np(get_format=self.get_format)
 
-        connected = self.is_server_connected()
-        freq = self.settings["frequency"]
-        min_d, max_d = self.RANGES[freq]
+        if now_playing:
+            return now_playing
 
-        self.log("--- Wishlist Plugin Enabled (1 search per cycle) ---")
-        self.log(f"Frequency: {freq.upper()} -> {min_d}-{max_d} seconds (randomised)")
-        self.log(f"Initial status: {'CONNECTED' if connected else 'OFFLINE - waiting'}")
+        return search_term
 
-        initial_delay = random.uniform(5, 15)
-        self.log(f"Starting in ~{initial_delay:.1f} seconds")
-        self.loop_id = GLib.timeout_add_seconds(int(initial_delay), self.search_next)
-
-    def server_connect_notification(self):
-        self.log("Connected - wishlist loop active")
-
-    def server_disconnect_notification(self, userchoice):
-        reason = "user requested" if userchoice else "connection lost"
-        self.log(f"Disconnected ({reason}) - wishlist loop will skip until reconnect")
-
-    def search_next(self):
-        if not self.plugin_running:
-            return False
-
-        if not self.is_server_connected():
-            self.log("Not connected - skipping cycle")
-            self._reschedule()
-            return False
-
-        try:
-            wishlist = self.config.sections["server"]["autosearch"]
-        except Exception as e:
-            self.log(f"Cannot read autosearch list: {e}")
-            self._reschedule()
-            return False
-
-        if not isinstance(wishlist, list) or len(wishlist) == 0:
-            self.log("Wishlist is empty.")
-            self._reschedule()
-            return False
-
-        total = len(wishlist)
-        idx = self.current_index % total
-        item = wishlist[idx]
-
-        # Handles both string list items and dictionary entries in newer versions
-        query = item.get("query", "") if isinstance(item, dict) else str(item)
-
-        if query:
-            position = f"{idx + 1}/{total}"
-            self.log(f"[{position}] Searching: {query}")
-
-            try:
-                search_obj = getattr(self.core, "search", None) or getattr(self.core, "searches", None)
-                if search_obj and hasattr(search_obj, "do_search"):
-                    # mode is required in Nicotine+ 3.4+
-                    search_obj.do_search(query, mode="wishlist")
-                else:
-                    self.log("  |- Search API not available")
-            except Exception as e:
-                self.log(f"  |- Failed: {e}")
-
-        self.current_index += 1
-        self._reschedule()
-        return False
-
-    def _reschedule(self):
-        if not self.plugin_running:
-            return
-
-        freq = self.settings["frequency"]
-        min_d, max_d = self.RANGES[freq]
-        delay = random.uniform(min_d, max_d)
-
-        self.log(f"Next search in ~{delay:.0f} s (frequency: {freq})")
-        self.loop_id = GLib.timeout_add_seconds(int(delay), self.search_next)
-
-    def disable(self):
-        self.plugin_running = False
-        self.log("--- Wishlist Plugin Disabled ---")
-        if self.loop_id is not None:
-            GLib.source_remove(self.loop_id)
-            self.loop_id = None
+    def get_format(self):
+        return self.np_format
