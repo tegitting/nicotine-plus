@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 tegitting
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-Version = "2026-11-18r00"
+Version = "2026-11-20r00"
 Authors = ["tegitting"]
 Name = "GateKeeper"
 Description = "Checks the shares of every user who queues an upload from you. Users whose public share is too small, too private or empty can be messaged, banned, or have their uploads cancelled.\n\nBuddies are skipped by default. Based on the Leech Detector plugin."

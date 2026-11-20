@@ -259,16 +259,18 @@ class Plugin(BasePlugin):
         public_files = public_bytes = 0
         private_files = private_bytes = 0
 
-        for _folder_path, files in msg.public_folders:
+        public_folders, private_folders = self._get_folders(msg)
+
+        for _folder_path, files in public_folders:
             public_files += len(files)
-            public_bytes += sum(file_data.size for file_data in files)
+            public_bytes += sum(self._get_file_size(file_data) for file_data in files)
 
-        for _folder_path, files in msg.private_folders:
+        for _folder_path, files in private_folders:
             private_files += len(files)
-            private_bytes += sum(file_data.size for file_data in files)
+            private_bytes += sum(self._get_file_size(file_data) for file_data in files)
 
-        num_public_dirs = len(msg.public_folders)
-        num_private_dirs = len(msg.private_folders)
+        num_public_dirs = len(public_folders)
+        num_private_dirs = len(private_folders)
         dirs = num_public_dirs + num_private_dirs
         files = public_files + private_files
         total_bytes = public_bytes + private_bytes
@@ -286,6 +288,36 @@ class Plugin(BasePlugin):
             return
 
         self._handle_leech(user, reason)
+
+    @staticmethod
+    def _get_folders(msg):
+        """Return (public, private) folder lists.
+
+        Builds up to 3.4.0.dev2 (Oct 2026) name them 'list' and 'privatelist';
+        newer builds name them 'public_folders' and 'private_folders'."""
+
+        public_folders = getattr(msg, "public_folders", None)
+
+        if public_folders is None:
+            public_folders = getattr(msg, "list", None) or []
+
+        private_folders = getattr(msg, "private_folders", None)
+
+        if private_folders is None:
+            private_folders = getattr(msg, "privatelist", None) or []
+
+        return public_folders, private_folders
+
+    @staticmethod
+    def _get_file_size(file_data):
+        """Newer builds give file objects with .size, older ones (code, name, size, ext, attrs) tuples."""
+
+        size = getattr(file_data, "size", None)
+
+        if size is None:
+            size = file_data[2]
+
+        return size or 0
 
     def _find_failure(self, files, dirs, num_private_dirs, total_bytes, public_bytes, public_percent):
         """Return the name of the first failed check, or None if the user passes."""
