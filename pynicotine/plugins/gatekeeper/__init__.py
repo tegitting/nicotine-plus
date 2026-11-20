@@ -230,8 +230,14 @@ class Plugin(BasePlugin):
             return
 
         del self.probed_users[user]
-        self.log("No shares received from %s in time, cancelling their uploads", user)
-        self._cancel_uploads(user)
+        cancelled = self._cancel_uploads(user)
+        seconds = self.settings["timeout_seconds"]
+
+        if cancelled:
+            self.log("Cancelled %s upload(s) for %s: their shares did not arrive within %s seconds",
+                     (cancelled, user, seconds))
+        else:
+            self.log("No shares from %s within %s seconds (nothing queued to cancel)", (user, seconds))
 
     def _cancel_uploads(self, user):
 
@@ -241,7 +247,8 @@ class Plugin(BasePlugin):
 
         if uploads:
             self.core.uploads.abort_uploads(uploads, denied_message="Cancelled")
-            self.log("Cancelled %s upload(s) from %s", (len(uploads), user))
+
+        return len(uploads)
 
     # Checking #
 
@@ -278,18 +285,16 @@ class Plugin(BasePlugin):
         total_bytes = public_bytes + private_bytes
         public_percent = (public_bytes / total_bytes * 100) if total_bytes else 0.0
 
-        self.log("%s: %s files in %s folders (%s private) | Public: %s (%.1f%%) | Private: %s",
-                 (user, f"{files:,}", f"{dirs:,}", f"{num_private_dirs:,}",
-                  human_size(public_bytes), public_percent, human_size(private_bytes)))
+        failure = self._find_failure(files, dirs, num_private_dirs, total_bytes, public_bytes, public_percent)
 
-        reason = self._find_failure(files, dirs, num_private_dirs, total_bytes, public_bytes, public_percent)
-
-        if reason is None:
+        if failure is None:
             self.passed_users.add(user)
-            self.log("%s passed", user)
+            self.log("Allowed %s: %s public (%.0f%% of their share), %s files",
+                     (user, human_size(public_bytes), public_percent, f"{files:,}"))
             return
 
-        self._handle_leech(user, reason)
+        reason, why = failure
+        self._handle_leech(user, reason, why)
 
     @staticmethod
     def _get_folders(msg):
@@ -322,41 +327,53 @@ class Plugin(BasePlugin):
         return size or 0
 
     def _find_failure(self, files, dirs, num_private_dirs, total_bytes, public_bytes, public_percent):
-        """Return the name of the first failed check, or None if the user passes."""
+        """Return (check name, plain-English reason) for the first failed check,
+        or None if the user passes."""
 
         settings = self.settings
 
         if files == 0:
-            return "empty_folders" if dirs > 0 else "no_files"
+            if dirs > 0:
+                return "empty_folders", f"their {dirs:,} shared folders are all empty"
+
+            return "no_files", "they share nothing"
 
         if dirs > 0 and num_private_dirs == dirs:
-            return "all_privates"
+            return "all_privates", f"all {dirs:,} of their folders are private"
 
+        min_percent = settings["min_public_percent"]
         min_public_bytes = settings["min_public_gib"] * GIB_IN_BYTES
 
-        if public_percent < settings["min_public_percent"] or public_bytes < min_public_bytes:
-            return "size_ratio"
+        if public_percent < min_percent or public_bytes < min_public_bytes:
+            needs = [f"{min_percent}%"] if min_percent else []
+
+            if min_public_bytes:
+                needs.append(human_size(min_public_bytes))
+
+            return "size_ratio", (f"only {human_size(public_bytes)} public ({public_percent:.0f}% of "
+                                  f"{human_size(total_bytes)}), needs at least {' and '.join(needs)}")
 
         if files < settings["num_files"]:
-            return "num_files"
+            return "num_files", f"only {files:,} files shared, needs at least {settings['num_files']:,}"
 
         if dirs < settings["num_folders"]:
-            return "num_folders"
+            return "num_folders", f"only {dirs:,} folders shared, needs at least {settings['num_folders']:,}"
 
         unit_bytes = MIB_IN_BYTES if settings["share_size_unit"] == "MB" else GIB_IN_BYTES
 
         if total_bytes < settings["share_size"] * unit_bytes:
-            return "share_size"
+            return "share_size", (f"only {human_size(total_bytes)} shared, needs at least "
+                                  f"{settings['share_size']:,} {settings['share_size_unit']}")
 
         return None
 
-    def _handle_leech(self, user, reason):
+    def _handle_leech(self, user, reason, why):
 
         should_ban = self.settings[f"{reason}_ban"]
-        should_message = self.settings[f"{reason}_pm"]
+        should_message = self.settings[f"{reason}_pm"] and self.settings[f"{reason}_message"]
 
         if not should_ban and not should_message:
-            self.log("%s failed check '%s' (no action enabled for this check)", (user, reason))
+            self.log("Allowed %s, though %s (no action is set for this check)", (user, why))
             return
 
         # Message first, so the user can still receive it before the ban
@@ -366,7 +383,9 @@ class Plugin(BasePlugin):
         if should_ban:
             # Banning also cancels the user's queued uploads
             self.core.network_filter.ban_user(user)
-            self.log("Banned %s (failed check '%s')", (user, reason))
+
+        action = " and ".join(word for word, done in (("Banned", should_ban), ("messaged", should_message)) if done)
+        self.log("%s %s: %s", (action[0].upper() + action[1:], user, why))
 
     def _send_message(self, user, message):
 
@@ -375,4 +394,3 @@ class Plugin(BasePlugin):
 
         self.send_private(user, AUTO_MESSAGE_PREFIX + message,
                           show_ui=self.settings["open_private_chat"], switch_page=False)
-        self.log("Messaged %s: %s", (user, message))
