@@ -153,7 +153,7 @@ class Plugin(BasePlugin):
         self.timeout_events = {}    # username -> scheduler event id
         self.passed_users = set()   # users who passed this session
         self.last_checked = {}      # username -> time of last check (for the cooldown)
-        self.browse_events = set()
+        self.browse_events = {}     # username -> scheduler event id for a delayed Browse tab
 
     # Plugin lifecycle #
 
@@ -168,7 +168,7 @@ class Plugin(BasePlugin):
 
         events.disconnect("shared-file-list-response", self._shared_file_list_response)
 
-        for event_id in list(self.timeout_events.values()) + list(self.browse_events):
+        for event_id in list(self.timeout_events.values()) + list(self.browse_events.values()):
             events.cancel_scheduled(event_id)
 
         self.timeout_events.clear()
@@ -202,8 +202,8 @@ class Plugin(BasePlugin):
             delay = self.settings["browse_delay_seconds"]
 
             if delay > 0:
-                event_id = events.schedule(delay=delay, callback=self._open_browse, callback_args=(user,))
-                self.browse_events.add(event_id)
+                self.browse_events[user] = events.schedule(
+                    delay=delay, callback=self._open_browse, callback_args=(user,))
             else:
                 self._open_browse(user)
         else:
@@ -214,6 +214,8 @@ class Plugin(BasePlugin):
                 delay=self.settings["timeout_seconds"], callback=self._check_timeout, callback_args=(user, now))
 
     def _open_browse(self, user):
+
+        self.browse_events.pop(user, None)
 
         # new_request=True makes sure fresh shares are requested, even if the
         # user's Browse tab was already open
