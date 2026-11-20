@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import os
-import signal
 import sys
 import threading
 
+from signal import SIGINT, SIGTERM, signal
 from threading import Thread
 from typing import BinaryIO
 from typing import TYPE_CHECKING
@@ -18,6 +18,7 @@ from pynicotine.events import events
 from pynicotine.i18n import LOCALE_PATH
 from pynicotine.logfacility import log
 from pynicotine.slskmessages import (
+    Address,
     InternalMessage,
     ServerConnect,
     ServerDisconnect,
@@ -78,7 +79,6 @@ class Core:
         self.notifications: Notifications | None = None
         self.port_checker: PortChecker | None = None
         self.update_checker: UpdateChecker | None = None
-        self._network_thread: NetworkThread | None = None
 
         self.cli_interface_address: str | None = None
         self.cli_listen_port: int | None = None
@@ -125,7 +125,7 @@ class Core:
 
         if "network_thread" in enabled_components:
             from pynicotine.slskproto import NetworkThread
-            self._network_thread = NetworkThread()
+            NetworkThread(portmapper=self.portmapper)
         else:
             events.connect("schedule-quit", self._schedule_quit)
 
@@ -205,13 +205,17 @@ class Core:
     def _init_signal_handler(self) -> None:
         """Handle Ctrl+C and "kill" exit gracefully."""
 
-        signals = [signal.SIGINT, signal.SIGTERM]
+        signals = [SIGINT, SIGTERM]
 
-        if hasattr(signal, "SIGHUP"):
-            signals.append(signal.SIGHUP)  # Terminal was closed
+        try:
+            from signal import SIGHUP
+            signals.append(SIGHUP)  # Terminal was closed
+
+        except ImportError:
+            pass
 
         for signal_type in signals:
-            signal.signal(signal_type, lambda signal_type, _frame: self.quit(signal_type))
+            signal(signal_type, lambda signal_type, _frame: self.quit(signal_type))
 
     def _init_error_handler(self) -> None:
 
@@ -255,7 +259,7 @@ class Core:
         log.add(_("Quitting %(program)s %(version)s, %(status)s…"), {
             "program": pynicotine.__application_name__,
             "version": pynicotine.__version__,
-            "status": _("terminating") if signal_type == signal.SIGTERM else _("application closing")
+            "status": _("terminating") if signal_type == SIGTERM else _("application closing")
         })
 
         # Allow the networking thread to finish up before quitting
@@ -283,13 +287,12 @@ class Core:
         events.emit("enable-message-queue")
 
         self.send_message_to_network_thread(ServerConnect(
-            addr=config.sections["server"]["server"],
+            addr=Address(*config.sections["server"]["server"]),
             username=config.sections["server"]["login"],
             password=config.sections["server"]["passw"],
             interface_name=config.sections["server"]["interface"],
             interface_address=self.cli_interface_address,
-            listen_port=self.cli_listen_port or config.sections["server"]["portrange"][0],
-            portmapper=self.portmapper
+            listen_port=self.cli_listen_port or config.sections["server"]["portrange"][0]
         ))
 
     def disconnect(self) -> None:

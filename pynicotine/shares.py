@@ -31,7 +31,7 @@ from os import (
 from stat import FILE_ATTRIBUTE_HIDDEN
 from struct import Struct
 from threading import Thread
-from typing import Literal, NoReturn
+from typing import Any, Literal, NoReturn, TypeAlias
 
 from pynicotine import rename_process
 from pynicotine.config import config
@@ -57,6 +57,9 @@ from pynicotine.utils import (
     encode_path,
     humanize
 )
+
+AudioQuality: TypeAlias = tuple[int | None, int, int | None, int | None]  # (bitrate, is_vbr, samplerate, bitdepth)
+FileInfo: TypeAlias = list[str | int | AudioQuality | None]               # [virtual_file_path, size, quality, duration]
 
 
 class FileTypes:
@@ -210,7 +213,7 @@ class Database:
     def __len__(self):
         return len(self._value_offsets)
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> Any:
 
         value_offset = self._value_offsets[key]
 
@@ -231,7 +234,7 @@ class Database:
         self._value_offsets[key] = self._file_offset + self.LENGTH_DATA_SIZE + key_length
         self._file_offset += len(item_data)
 
-    def get(self, key: str, default=None):
+    def get(self, key: str, default=None) -> Any:
 
         if key in self._value_offsets:
             return self[key]
@@ -679,7 +682,7 @@ class Scanner:
 
         return tag
 
-    def get_file_info(self, virtual_file_path: str, file_path: str, file_stat: stat_result):
+    def get_file_info(self, virtual_file_path: str, file_path: str, file_stat: stat_result) -> FileInfo:
         """Get file metadata."""
 
         tag = None
@@ -735,7 +738,7 @@ class Scanner:
         return [virtual_file_path, size, quality, duration]
 
     @staticmethod
-    def get_folder_stream(file_list) -> bytes:
+    def get_folder_stream(file_list: list[FileInfo]) -> bytes:
         """Pack all files and metadata in folder."""
 
         stream = bytearray()
@@ -1384,8 +1387,7 @@ class Shares:
 
         log.add(_("User %(user)s is browsing your list of shared files"), {"user": username})
 
-        ip_address, _port = msg.addr
-        permission_level, _reject_reason = self.check_user_permission(username, ip_address)
+        permission_level, _reject_reason = self.check_user_permission(username, msg.addr.ip)
         shares_list = self.compressed_shares.get(permission_level)
         shares_list.username = shares_list.sock = None  # Reset previous connection
 
@@ -1394,10 +1396,9 @@ class Shares:
     def _folder_contents_request(self, msg: FolderContentsRequest) -> None:
         """Peer code 36."""
 
-        ip_address, _port = msg.addr
         username = msg.username
         folder_path = msg.folder_path
-        permission_level, _reject_reason = self.check_user_permission(username, ip_address)
+        permission_level, _reject_reason = self.check_user_permission(username, msg.addr.ip)
         stream = None
 
         if permission_level != PermissionLevel.BANNED:

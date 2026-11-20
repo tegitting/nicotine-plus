@@ -40,6 +40,7 @@ from threading import Thread
 
 from pynicotine.events import events
 from pynicotine.logfacility import log
+from pynicotine.portmapper import PortMapper
 from pynicotine.slskmessages import (
     DISTRIBUTED_MESSAGE_CLASSES,
     PEER_MESSAGE_CLASSES,
@@ -48,6 +49,7 @@ from pynicotine.slskmessages import (
     SERVER_USERNAME,
     DOUBLE_UINT32_UNPACK,
     UINT32_UNPACK,
+    Address,
     AcceptChildren,
     AddAllowedResponse,
     BranchLevel,
@@ -107,7 +109,7 @@ from pynicotine.utils import (
 @dataclass(slots=True, eq=False)
 class Connection:
     sock: socket
-    addr: tuple[str, int]
+    addr: Address
     io_events: int
     recv_size: int = 51200
     is_established: bool = False
@@ -131,7 +133,7 @@ class PeerConnection(Connection):
 
 @dataclass(slots=True, eq=False)
 class UserAddress:
-    addr: tuple[str, int]
+    addr: Address
     last_update: float = field(default_factory=time.monotonic)
 
 
@@ -395,10 +397,11 @@ class NetworkThread(Thread):
 
         MAX_SOCKETS = 512
 
-    def __init__(self):
+    def __init__(self, portmapper: PortMapper | None):
 
         super().__init__(name="NetworkThread")
 
+        self._portmapper = portmapper
         self._message_queue = SimpleQueue()
         self._pending_peer_conns = {}
         self._pending_init_msgs = defaultdict(list)
@@ -414,7 +417,6 @@ class NetworkThread(Thread):
         self._listen_port = None
         self._interface_name = None
         self._interface_address = None
-        self._portmapper = None
         self._local_ip_address = ""
 
         self._server_conn = None
@@ -858,9 +860,8 @@ class NetworkThread(Thread):
 
             if user_address is not None:
                 addr = user_address.addr
-                _ip_address, port = addr
 
-                if not port:
+                if not addr.port:
                     # Port 0 likely means the server hasn't received the user's port yet.
                     # Ask the server for a new address.
                     addr = None
@@ -898,12 +899,10 @@ class NetworkThread(Thread):
     def _connect_error(self, error, conn) -> None:
 
         if isinstance(conn, ServerConnection):
-            server_address, port = conn.addr
-
             log.add(
                 _("Cannot connect to server %(host)s:%(port)s: %(error)s"), {
-                    "host": server_address,
-                    "port": port,
+                    "host": conn.addr.ip,
+                    "port": conn.addr.port,
                     "error": error
                 }
             )
@@ -1298,14 +1297,11 @@ class NetworkThread(Thread):
             events.emit_main_thread("set-connection-stats")  # Reset connection stats
             return
 
-        self._portmapper = msg.portmapper
-
         self._manual_server_disconnect = False
         self._manual_server_reconnect = False
         self._server_timeout_time = None
 
-        ip_address, port = msg.addr
-        log.add(_("Connecting to %(host)s:%(port)s"), {"host": ip_address, "port": port})
+        log.add(_("Connecting to %(host)s:%(port)s"), {"host": msg.addr.ip, "port": msg.addr.port})
 
         self._init_server_conn(msg)
 
@@ -1345,12 +1341,11 @@ class NetworkThread(Thread):
     def _establish_outgoing_server_connection(self, conn) -> None:
 
         conn.is_established = True
-        server_hostname, server_port = conn.addr
 
         log.add(
             _("Connected to server %(host)s:%(port)s, logging in…"), {
-                "host": server_hostname,
-                "port": server_port
+                "host": conn.addr.ip,
+                "port": conn.addr.port
             }
         )
 
@@ -1358,7 +1353,9 @@ class NetworkThread(Thread):
         password = conn.password
         conn.username = conn.password = None
 
-        self._user_addresses[username] = UserAddress((self._local_ip_address, self._listen_port))
+        self._user_addresses[username] = UserAddress(
+            Address(self._local_ip_address, self._listen_port)
+        )
         self._server_address = conn.addr
         self._login_username = self._branch_root = username
         self._server_timeout_value = -1
@@ -1427,12 +1424,10 @@ class NetworkThread(Thread):
         elif isinstance(msg, Login):
             if msg.success:
                 # Ensure listening port is open
-                user_address = self._user_addresses[self._login_username]
-                msg.local_address = user_address.addr
-                local_ip_address, port = msg.local_address
+                msg.local_address = self._user_addresses[self._login_username].addr
 
                 if self._portmapper is not None:
-                    self._portmapper.set_port(port, local_ip_address)
+                    self._portmapper.set_port(msg.local_address.port, msg.local_address.ip)
                     self._portmapper.add_port_mapping(blocking=True)
 
                 msg.username = self._login_username
@@ -1447,7 +1442,7 @@ class NetworkThread(Thread):
 
         elif isinstance(msg, ConnectToPeer):
             username = msg.username
-            addr = (msg.ip_address, msg.port)
+            addr = Address(msg.ip_address, msg.port)
             conn_type = msg.conn_type
             pierce_token = msg.token
 
@@ -1479,7 +1474,7 @@ class NetworkThread(Thread):
             if not msg.port:
                 log.add_conn("Server reported port 0 for user %s", username)
 
-            addr = (msg.ip_address, msg.port)
+            addr = Address(msg.ip_address, msg.port)
             user_offline = (msg.ip_address == "0.0.0.0")
 
             for init in pending_init_msgs:
@@ -1636,7 +1631,6 @@ class NetworkThread(Thread):
         if self._portmapper is not None:
             self._portmapper.remove_port_mapping(blocking=True)
             self._portmapper.set_port(port=None, local_ip_address=None)
-            self._portmapper = None
 
         self._parent = None
         self._potential_parents.clear()
@@ -1666,12 +1660,10 @@ class NetworkThread(Thread):
             # We didn't successfully establish a connection to the server
             return
 
-        ip_address, port = self._server_address
-
         log.add(
             _("Disconnected from server %(host)s:%(port)s"), {
-                "host": ip_address,
-                "port": port
+                "host": self._server_address.ip,
+                "port": self._server_address.port
             })
 
         if self._server_relogged:
@@ -1870,7 +1862,7 @@ class NetworkThread(Thread):
 
             conn = self._conns[incoming_sock] = PeerConnection(
                 sock=incoming_sock,
-                addr=incoming_addr,
+                addr=Address(*incoming_addr),
                 io_events=io_events
             )
             self._num_sockets += 1
@@ -1889,7 +1881,6 @@ class NetworkThread(Thread):
             self._pending_peer_conns[init] = (addr, pierce_token)
             return
 
-        _ip_address, port = addr
         self._pending_peer_conns.pop(init, None)
 
         if pierce_token is None:
@@ -1905,7 +1896,7 @@ class NetworkThread(Thread):
 
             self._connect_to_peer_indirect(init)
 
-        if port <= 0 or port > 65535:
+        if addr.port <= 0 or addr.port > 65535:
             log.add_conn("Skipping direct connection attempt of type %s to user %s "
                          "due to invalid address %s", (init.conn_type, init.target_username, addr))
             return

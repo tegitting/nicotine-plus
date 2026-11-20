@@ -95,8 +95,63 @@ jobs:
         run: |
           dnf config-manager setopt fedora-cisco-openh264.enabled=0
           dnf -y upgrade --refresh
-          dnf -y install gettext gtk${{ matrix.gtk }} python3 python3-build \
-            python3-gobject python3-setuptools python3-wheel
+          dnf -y install gettext gtk${{ matrix.gtk }} python3-build python3-gobject \
+            python3-setuptools python3-wheel
+
+      - name: Integration and unit tests
+        run: python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m build
+
+      - name: Build without isolation
+        run: python3 -m build --no-isolation
+
+  almalinux:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['almalinux:10']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          dnf -y upgrade --refresh
+          dnf -y install gettext gtk4 python3-gobject python3-pip \
+            python3-setuptools python3-wheel xwayland-run
+
+      - name: Integration and unit tests
+        run: wlheadless-run -- python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m pip install --no-build-isolation --no-deps .
+
+  archlinux:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['archlinux']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          pacman -Suy --noconfirm
+          pacman -S --noconfirm gettext gtk4 python-build python-gobject \
+            python-setuptools python-wheel
 
       - name: Integration and unit tests
         run: python3 -m unittest -v
@@ -124,6 +179,7 @@ jobs:
       - name: Install dependencies
         run: |
           zypper refresh
+          zypper -n dup
           zypper -n install dejavu-fonts gettext-tools python314-build python314-gobject \
             python314-gobject-Gdk python314-setuptools python314-wheel typelib-1_0-Gtk-4_0
 
@@ -152,8 +208,37 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apk update
+          apk upgrade -U
           apk add font-dejavu gettext gtk4.0 py3-build py3-gobject3 py3-setuptools py3-wheel
+
+      - name: Integration and unit tests
+        run: python3 -m unittest -v
+
+      - name: Build
+        run: python3 -m build
+
+      - name: Build without isolation
+        run: python3 -m build --no-isolation
+
+  mageia:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ['mageia:cauldron']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          urpmi --auto-update
+          urpmi --auto fonts-ttf-dejavu gettext gtk4.0 lib64gtk-gir4.0 python3-build python3-gobject \
+            python3-setuptools python3-wheel
 
       - name: Integration and unit tests
         run: python3 -m unittest -v
@@ -185,6 +270,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo pkg upgrade -y
           sudo pkg install -y cage dejavu gettext gtk4 py312-build py312-pygobject \
             py312-setuptools py312-wheel
 
@@ -224,7 +310,9 @@ jobs:
           environment_variables: NICOTINE_NETWORK_TESTS
 
       - name: Install dependencies
-        run: sudo pkg_add gettext-tools gtk+4 py3-build py3-gobject3 py3-setuptools py3-wheel
+        run: |
+          sudo pkg_add -u
+          sudo pkg_add gettext-tools gtk+4 py3-build py3-gobject3 py3-setuptools py3-wheel
 
       - name: Integration and unit tests
         run: |
@@ -260,6 +348,8 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo pkgin -y update
+          sudo pkgin -y upgrade
           sudo pkgin -y install gettext-tools python314 py314-build py314-gobject3 \
             py314-setuptools
 
@@ -300,11 +390,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo pkg install -y dejavu gettext gtk4 python312 py312-build py312-pygobject \
-            py312-setuptools py312-wheel
+          sudo pkg upgrade -y
+          sudo pkg install -y dejavu gettext gtk4 py312-build py312-pygobject \
+            py312-setuptools py312-wheel xorg-vfbserver
 
       - name: Integration and unit tests
-        run: python3.12 -m unittest -v
+        run: |
+          export GTK_A11Y=none
+          export DISPLAY=:99
+          Xvfb :99 > /dev/null 2>&1 &
+          python3.12 -m unittest -v
 
       - name: Build
         run: python3.12 -m build
@@ -336,6 +431,7 @@ jobs:
           # Use a more reliable mirror
           sudo mport config set mirror_region uk
           sudo mport index
+          sudo mport upgrade
           sudo mport install dejavu gettext gtk4 python311 py311-build py311-pygobject \
             py311-setuptools py311-wheel || true
 

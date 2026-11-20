@@ -20,11 +20,15 @@ from operator import itemgetter
 from random import randint
 from socket import inet_aton, inet_ntoa, socket
 from struct import Struct
+from typing import NamedTuple, TYPE_CHECKING, cast
 
 from pynicotine.utils import (
     UINT32_LIMIT,
     human_length
 )
+
+if TYPE_CHECKING:
+    from pynicotine.shares import AudioQuality, FileInfo
 
 # This module contains message classes, that networking and UI thread
 # exchange. Basically there are three types of messages: internal messages,
@@ -141,7 +145,12 @@ class ParentStatus:
     REJECTED = 2
 
 
-# Data Classes #
+# Structures #
+
+
+class Address(NamedTuple):
+    ip: str
+    port: int
 
 
 @dataclass(slots=True, eq=False)
@@ -231,7 +240,7 @@ class SharedFile:
 @dataclass(slots=True, eq=False)
 class ParentCandidate:
     username: str
-    addr: tuple[str, int]
+    addr: Address
     sock: socket | None = None
     branch_root: str | None = None
     branch_level: int | None = None
@@ -261,19 +270,17 @@ class CloseConnection(InternalMessage):
 class ServerConnect(InternalMessage):
     """Sent to the networking thread to establish a server connection."""
 
-    __slots__ = ("addr", "username", "password", "interface_name", "interface_address", "listen_port",
-                 "portmapper")
+    __slots__ = ("addr", "username", "password", "interface_name", "interface_address", "listen_port")
     HIDDEN_FIELDS = {"username", "password"}
 
     def __init__(self, addr=None, username=None, password=None, interface_name=None, interface_address=None,
-                 listen_port=None, portmapper=None):
+                 listen_port=None):
         self.addr = addr
         self.username = username
         self.password = password
         self.interface_name = interface_name
         self.interface_address = interface_address
         self.listen_port = listen_port
-        self.portmapper = portmapper
 
 
 class ServerDisconnect(InternalMessage):
@@ -504,10 +511,11 @@ class FileListMessage(SlskMessage):
     __slots__ = ()
 
     @classmethod
-    def pack_file_info(cls, fileinfo) -> bytearray:
+    def pack_file_info(cls, fileinfo: FileInfo) -> bytearray:
 
-        msg = bytearray()
-        virtual_file_path, size, quality, duration = fileinfo
+        virtual_file_path, size, quality, duration = cast(
+            tuple[str, int, "AudioQuality | None", int | None], fileinfo
+        )
         bitrate = is_vbr = samplerate = bitdepth = None
 
         if quality is not None:
@@ -515,6 +523,7 @@ class FileListMessage(SlskMessage):
 
         is_lossless = bitdepth is not None
 
+        msg = bytearray()
         msg += cls.pack_uint8(1)
         msg += cls.pack_string(virtual_file_path)
         msg += cls.pack_uint64(size)
@@ -2262,12 +2271,13 @@ class PossibleParents(ServerMessage):
 
         for _ in range(num_candidates):
             username = self.unpack_string()
-            ip_address = self.unpack_ip()
-            port = self.unpack_uint32()
 
             self.candidates[username] = ParentCandidate(
                 username=username,
-                addr=(ip_address, port)
+                addr=Address(
+                    ip=self.unpack_ip(),
+                    port=self.unpack_uint32()
+                )
             )
 
 
